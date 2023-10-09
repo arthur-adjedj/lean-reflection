@@ -1,35 +1,10 @@
+import Reflection.Vec
+import Reflection.ForallTelescope
+
 infixr:35 " ×' "  => PProd
 
-inductive ListN : Type where
-| nil : ListN
-| cons : Nat -> ListN -> ListN
-
-inductive Tree : Type where
-| leaf : Tree
-| node : Nat -> Tree -> Tree -> Tree
-
-#check Tree.rec
-/- {motive : Tree → Sort u} →
-  motive Tree.leaf →
-  ((a : Nat) → (a_1 a_2 : Tree) → motive a_1 → motive a_2 → motive (Tree.node a a_1 a_2)) →
-  (t : Tree) →
-  motive t
--/
-
-#check Nat.rec
-/- {motive : Nat → Sort u} →
-  motive Nat.zero →
-  ((n : Nat) → motive n → motive (Nat.succ n)) →
-  (t : Nat) →
-  motive t
--/
-
-#check ListN.rec
-/- {motive : ListN → Sort u} →
-  motive ListN.nil →
-  ((a : Nat) → (a_1 : ListN) → motive a_1 → motive (ListN.cons a a_1)) →
-  (t : ListN) →
-  motive t
+/-
+  # Ctor Spec
 -/
 
 inductive SCtorSpec : Type 1 where
@@ -47,11 +22,22 @@ inductive SCtorArgs : (T : Type) -> (spec : SCtorSpec) -> SCtorType T spec -> Ty
 | recursive    : ((x : T) -> SCtorArgs T specTail (f x)) -> SCtorArgs T (.self    specTail) f
 | nonrecursive : ((x : U) -> SCtorArgs T specTail (f x)) -> SCtorArgs T (.other U specTail) f
 
--- abbrev SCtor T := (spec : SCtorSpec) × (ctor : SCtorType T spec) × SCtorArgs T spec ctor
 structure SCtor (T : Type) where
   spec : SCtorSpec
   ctor : SCtorType T spec
   args : SCtorArgs T spec ctor
+
+def SCtorSpec.len : SCtorSpec -> Nat
+| .nil => 0
+| .self tail => 1 + tail.len
+| .other _ tail => 1 + tail.len
+
+def SCtorSpec.Get (T : Type) : (spec : SCtorSpec) -> (i : Fin spec.len) -> Type
+| .nil         , dumb => sorry -- absurd
+| .self       _, ⟨0, _⟩ => T
+| .self    tail, ⟨.succ n, hn⟩ => tail.Get T ⟨n, sorry⟩
+| .other U    _, ⟨0, _⟩ => U
+| .other _ tail, ⟨.succ n, hn⟩ => tail.Get T ⟨n, sorry⟩
 
 /-- Helper function. Computes the "match arm" in the recursor type for one constructor.
   For example, for `Nat.succ` returns `(n : Nat) -> motive n → motive (Nat.succ n)`.
@@ -68,56 +54,129 @@ def RecCase (motive : T -> Prop) (spec : SCtorSpec) (ctor : SCtorType T spec) (h
       let .nonrecursive h' := h
       RecCase motive specTail (ctor x) (h' x) mots
 
-def RecCases (motive : T -> Prop) : List (SCtor T) -> Prop
-| [] => (t : T) -> motive t
-| ⟨spec, ctor, hctor⟩ :: rest => RecCase motive spec ctor hctor id -> RecCases motive rest
+def RecCases (motive : T -> Prop) : Vec (SCtor T) k -> Prop
+| ⟦⟧ => (t : T) -> motive t
+| ⟨spec, ctor, hctor⟩ ::: rest => RecCase motive spec ctor hctor id -> RecCases motive rest
 
 /-- Computes the recursor type for the given constructor spec. -/
-def Rec : List (SCtor T) -> Prop
+def Rec : Vec (SCtor T) k -> Prop
 | ctors => (motive : T -> Prop) -> RecCases motive ctors
 
-def IotaIntroArgs (motive : T -> Prop)
-  (i_spec : SCtorSpec) (i_ctor : SCtorType T i_spec) (i_h : SCtorArgs T i_spec i_ctor)
-  -- (ctors : List (SCtor T))
-  -- (recursor : @Rec T ctors)
-  (i_case : RecCase motive i_spec i_ctor i_h id)
-  (fin : (t : T) -> motive t)
-  : (spec : SCtorSpec) -> (ctor : SCtorType T spec) -> SCtorArgs T spec ctor -> Prop
-| .nil             , ctor, .head .. => fin ctor = i_case sorry
-| .self    specTail, ctor, .recursive .. => (a : T) -> sorry
-| .other U specTail, ctor, .nonrecursive .. => sorry
+section Iotas
+-- /-- Iota reduction rule for one specific case. -/
+-- def Iota
+--   (motive : T -> Prop)
+--   (fin : T -> Prop)
+--   (ctors : Vec (SCtor T) k)
+--   (cases : (i : Fin k) -> RecCase motive (Get ctors i).spec (Get ctors i).ctor (Get ctors i).args id)
+--   (i : Fin k)
+--   (args : (j : Fin (Get ctors i).spec.len) -> (Get ctors i).spec.Get T j)
+--   : Prop :=
+--   -- := fin ((Get ctors i).ctor ARGS) = cases i ARGS
+--     match (Get ctors i).args with
+--     | .head f => sorry
+--     | _ => sorry
 
-def x := 5
 
-def IotaIntroCases₂ (motive : T -> Prop)
-  (cont : ((t : T) -> motive t) → Prop)
-  : (cs : List (SCtor T)) -> RecCases motive cs -> Prop
-| [], (fin : (t : T) -> motive t) => cont fin
-| ⟨j_spec, j_ctor, j_hctor⟩ :: rest, fin =>
-    (j_case : RecCase motive j_spec j_ctor j_hctor id) ->
-      IotaIntroCases₂ motive cont rest (fin j_case)
+-- def IotaIntroArgs (motive : T -> Prop)
+--   (i_spec : SCtorSpec) (i_ctor : SCtorType T i_spec) (i_h : SCtorArgs T i_spec i_ctor)
+--   -- (ctors : List (SCtor T))
+--   -- (recursor : @Rec T ctors)
+--   (i_case : RecCase motive i_spec i_ctor i_h id)
+--   (fin : (t : T) -> motive t)
+--   : (spec : SCtorSpec) -> (ctor : SCtorType T spec) -> SCtorArgs T spec ctor -> Prop
+-- | .nil             , ctor, .head .. => fin ctor = i_case sorry
+-- | .self    specTail, ctor, .recursive .. => (a : T) -> sorry
+-- | .other U specTail, ctor, .nonrecursive .. => sorry
 
-/-- In `Pre` we collect the cases forall binders. -/
-def IotaIntroCases₁
-  (motivate : ((motive : T -> Prop) -> Prop) -> Prop)
-  : (cs : List (SCtor T)) -> ((motive : T -> Prop) -> RecCases motive cs) -> Type
-| [], _fin => Unit
-| ⟨j_spec, j_ctor, j_hctor⟩ :: rest, (fin /-: (motive : T -> Prop) -> RecCase motive j_spec j_ctor j_hctor id -> RecCases motive rest-/) =>
+-- def x := 5
 
-  let thisIota : Prop :=
-    motivate fun (motive : T -> Prop) =>
-      (j_case : RecCase motive j_spec j_ctor j_hctor id) ->
-        let cont : ((t : T) -> motive t) → Prop := fun (fin' : (t : T) -> motive t) =>
-          IotaIntroArgs motive j_spec j_ctor j_hctor j_case fin' j_spec j_ctor j_hctor
-        IotaIntroCases₂ motive cont rest (fin motive j_case)
+-- def IotaIntroCases₂ (motive : T -> Prop)
+--   (cont : ((t : T) -> motive t) → Prop)
+--   : (cs : List (SCtor T)) -> RecCases motive cs -> Prop
+-- | [], (fin : (t : T) -> motive t) => cont fin
+-- | ⟨j_spec, j_ctor, j_hctor⟩ :: rest, fin =>
+--     (j_case : RecCase motive j_spec j_ctor j_hctor id) ->
+--       IotaIntroCases₂ motive cont rest (fin j_case)
 
-  let tailIotas : Type := IotaIntroCases₁ motivate rest
-    (fun (motive : T -> Prop) (P : Prop -> Prop) => fin motive (fun (j_case : RecCase motive j_spec j_ctor j_hctor id) => P j_case) j_case)
+-- /-- In `Pre` we collect the cases forall binders. -/
+-- def IotaIntroCases₁
+--   (motivate : ((motive : T -> Prop) -> Prop) -> Prop)
+--   : (cs : List (SCtor T)) -> ((motive : T -> Prop) -> RecCases motive cs) -> Type
+-- | [], _fin => Unit
+-- | ⟨j_spec, j_ctor, j_hctor⟩ :: rest, (fin /-: (motive : T -> Prop) -> RecCase motive j_spec j_ctor j_hctor id -> RecCases motive rest-/) =>
 
-  thisIota ×' tailIotas
+--   let thisIota : Prop :=
+--     motivate fun (motive : T -> Prop) =>
+--       (j_case : RecCase motive j_spec j_ctor j_hctor id) ->
+--         let cont : ((t : T) -> motive t) → Prop := fun (fin' : (t : T) -> motive t) =>
+--           IotaIntroArgs motive j_spec j_ctor j_hctor j_case fin' j_spec j_ctor j_hctor
+--         IotaIntroCases₂ motive cont rest (fin motive j_case)
 
-def Iotas (ctors : List (SCtor T)) (recursor : @Rec T ctors) : Type
-  := IotaIntroCases₁ (fun P => (motive : T -> Prop) -> P motive) (fun _ => id) ctors recursor
+--   let tailIotas : Type := IotaIntroCases₁ motivate rest
+--     (fun (motive : T -> Prop) (P : Prop -> Prop) => fin motive (fun (j_case : RecCase motive j_spec j_ctor j_hctor id) => P j_case) j_case)
+
+--   thisIota ×' tailIotas
+
+-- def SpecLen : SCtorSpec -> Nat
+-- | .nil => 0
+-- | .self tail => Nat.succ (SpecLen tail)
+-- | .other _ tail => Nat.succ (SpecLen tail)
+
+-- def SpecDoms (T : Type) : (spec : SCtorSpec) -> Vec Type (SpecLen spec)
+-- | .nil => .nil
+-- | .self tail => T ::: SpecDoms T tail
+-- | .other U tail => U ::: SpecDoms T tail
+
+-- def Fun : Vec (Sort u) k -> Sort u -> Sort u
+-- | .nil, Ret => Ret
+-- | .cons x xs, Ret => (_ : x) -> Fun xs Ret
+
+-- def apply (argTypes : Vec (Sort u) k) (f : Fun argTypes Ret) (args : (i : Fin k) -> Get argTypes i) : Ret
+--   := sorry
+
+-- def apply₁
+--   (argTypes : Vec (Sort u) k)
+--   (motive : T -> Prop)
+--   (f : RecCases motive ctors)
+--   (args : (i : Fin k) -> Get argTypes i)
+--   : RecCases motive ⟦⟧
+--   :=
+--     match argTypes with
+--     | ⟦⟧ => sorry
+--     | x ::: xs => sorry
+
+-- def apply₂
+--   (argTypes : Vec (Sort u) k)
+--   (f : )
+
+-- def Iota (ctors : Vec (SCtor T) k) (recursor : @Rec T k ctors) (idx : Fin k) : Prop :=
+--   (motive : T -> Prop) ->
+--     let Cases : Vec Prop k := Map ctors (fun ⟨spec, ctor, args⟩ => RecCase motive spec ctor args id)
+--     ForallTelescopeP Cases fun cases =>
+--       let Args : Vec Type _ := SpecDoms T (Get ctors idx).spec
+--       ForallTelescopeP Args fun args =>
+--         let fin := apply₁ Cases motive (recursor motive) cases
+--         let ctor := Get ctors idx |>.ctor
+--         fin (apply Args ctor args) = (apply Args (cases idx) args) /- and now all the recursive cases... oof -/
+
+
+-- def IotasAux (ctors : Vec (SCtor T) k) (recursor : @Rec T k ctors) (idx : Fin k) : Type := sorry
+
+-- def Iotas (ctors : Vec (SCtor T) k) (recursor : @Rec T k ctors) : Type
+--   := IotasAux ctors recursor 
+--     sorry
+--   -- := IotaIntroCases₁ (fun P => (motive : T -> Prop) -> P motive) (fun _ => id) ctors recursor
+
+end Iotas
+
+structure SimpleInductiveType (T : Type) where
+  k : Nat
+  ctors : Vec (SCtor T) k
+  recursor : Rec ctors
+  -- iotas : Iotas ctors
+
+#check Nat
 
 theorem Nat_iota_zero (motive : Nat -> Prop)
   (case_zero : motive Nat.zero)
@@ -131,6 +190,10 @@ theorem Nat_iota_succ (motive : Nat -> Prop)
   : @Nat.rec motive case_zero case_succ (Nat.succ n)
       = case_succ n (@Nat.rec motive case_zero case_succ n)
   := Eq.refl _
+
+inductive ListN : Type where
+| nil : ListN
+| cons : Nat -> ListN -> ListN
 
 theorem ListN_iota_nil (motive : ListN -> Prop)
   (case_nil : motive ListN.nil)
@@ -146,19 +209,10 @@ theorem ListN_iota_cons (motive : ListN -> Prop)
       = case_cons head tail (@ListN.rec motive case_nil case_cons tail)
   := Eq.refl _
 
-structure SIType (T : Type) where
-  ctors : List (SCtor T)
-  recursor : Rec ctors
-  -- iotas : Iotas ctors recursor ctors
-
-inductive SType : Type -> Type 1 where
-| ind  : SIType A           -> SType A
-| func : SType A -> SType B -> SType (A -> B)
-
-def sNat : SIType Nat := {
-  ctors := [
-    ⟨.nil      , Nat.zero, SCtorArgs.head Nat.zero⟩,
-    ⟨.self .nil, Nat.succ, SCtorArgs.recursive fun (n : Nat) => SCtorArgs.head (Nat.succ n)⟩]
+def sNat : SimpleInductiveType Nat := {
+  ctors :=
+    ⟨.nil      , Nat.zero, SCtorArgs.head Nat.zero⟩ :::
+    ⟨.self .nil, Nat.succ, SCtorArgs.recursive fun (n : Nat) => SCtorArgs.head (Nat.succ n)⟩ ::: ⟦⟧
   recursor := @Nat.rec
 }
 
@@ -168,27 +222,49 @@ def cCons : SCtorArgs ListN (.other Nat (.self .nil)) ListN.cons :=
     SCtorArgs.recursive <| fun (list : ListN) =>
       SCtorArgs.head <| ListN.cons n list
 
-def sListN : SIType ListN := {
-  ctors := [
-    ⟨.nil                   , ListN.nil,  cNil⟩,
-    ⟨.other Nat (.self .nil), ListN.cons, cCons⟩]
+def sListN : SimpleInductiveType ListN := {
+  ctors :=
+    ⟨.nil                   , ListN.nil,  cNil⟩ :::
+    ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
   recursor := @ListN.rec
 }
 
-def translate' (T : Type) : SIType T -> (E : Type) -> (G : E -> Prop) -> SIType U
-| ⟨⟨spec, c, hc⟩ :: cs, recursor⟩ => sorry
-| ⟨[], recursor⟩ => sorry
+/-
+  # Expressions
+-/
 
-inductive HType : Type -> Type 1
-| simple {A : Type} : SIType A -> HType A
-| func {A B : Type} : HType A -> HType B -> HType (A -> B)
+inductive SimpleType : Type -> Type 2
+| ind  {A   : Type} : SimpleInductiveType A        -> SimpleType A
+| func {A B : Type} : SimpleType A -> SimpleType B -> SimpleType (A -> B)
 
-inductive HVal : (T : Type) -> HType T -> T -> Type
+def Args : Type -> Type := sorry
+def apply : (ctor : SCtorType T spec) -> Args T -> T := sorry
 
-set_option genInjectivity false in
-inductive HProp : Prop -> Type 1
-| and {α β : Prop} : HProp α -> HProp β -> HProp (And α β)
-| app (T : Type) (x : T) (h : HType T) : @HVal T h x -> (P : T -> Prop) -> HProp (P x)
--- gen_injective_theorems% HProp
+inductive SimpleValue : (T : Type) -> SimpleType T -> T -> Type 2
+| ctor
+  (ind : SimpleInductiveType T)
+  (i : Fin ind.k)
+  (args : Args T)
+  : SimpleValue T (.ind ind) (apply (Get ind.ctors i).ctor args)
+| lam
+  {a : SimpleType A}
+  {b : SimpleType B}
+  (body : A -> B)
+  : SimpleValue (A -> B) (.func a b) (fun (arg : A) => body arg)
+-- | app {A B : Type}
+--   {a : SimpleType A}
+--   {b : SimpleType B}
+--   (f : A -> B)
+--   (fSimple : SimpleValue (A -> B) (SimpleType.func a b) f)
+--   (arg : A)
+--   (argSimple : SimpleValue A a arg)
+--   : SimpleValue B b (f arg)
 
+inductive InductiveType : (U : List Type) -> (I : List Type) -> (U -> I -> Type) -> Type 1
 
+def eraseIndices (T : Type) : SimpleInductiveType T -> ((Erased : Type) × (Guard : Erased -> Prop) × SimpleInductiveType Erased)
+| ⟨.succ k, ⟨spec, c, hc⟩ ::: cs, recursor⟩ => sorry
+| ⟨0, ⟦⟧, recursor⟩ => sorry
+
+def translate (φ : Prop) : LeanPred φ -> ((φ' : Prop) × SimplePred φ')
+| .inductive => eraseIndices
