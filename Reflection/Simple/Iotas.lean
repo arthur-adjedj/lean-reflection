@@ -51,8 +51,12 @@ inductive IotaCasesScaffolding1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K)
           -> IotaCasesScaffolding1 o_ctors k i' ctors' /-(base case)-/)
     -> IotaCasesScaffolding1 o_ctors k (.succ i') (ctor ::: ctors') --(base)
 
--- #check Nat.lt
-theorem aux : i + 1 > k -> ¬(i = k) -> i > k := sorry
+theorem aux_indices : i + 1 > k -> ¬(i = k) -> i > k
+| h₁, h₂ => by
+  simp_all [GT.gt]
+  cases h₁ with
+  | refl => simp_all [Nat.add]
+  | step o => simp_all [Nat.add]; exact o
 
 /-- Build the scaffolding from K to k. -/
 def IotaCasesScaffold1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) (k : Fin K) --(base : RecCases motive o_ctors)
@@ -67,7 +71,7 @@ where
       exact .thiscase (motive := motive) (o_ctors := o_ctors) (ctor ::: ctors')
     else
       let xxx : IotaCasesScaffolding1 o_ctors k i' ctors'
-        := go (motive := motive) (o_ctors := o_ctors) (k := k) ⟨i', aux hi' h⟩ ctors'
+        := go (motive := motive) (o_ctors := o_ctors) (k := k) ⟨i', aux_indices hi' h⟩ ctors'
       .before ctor ctors' (fun _ => xxx)
 
 /-- Introduces binders for each case.
@@ -130,6 +134,6 @@ namespace Test
 
   abbrev ListN.ctors [inst : _SimpleInductiveType ListN] : Vec (SCtor ListN) inst.K := inst.ctors
   -- Whoops it is slow:
-  -- #reduce Iota ListN.ctors @ListN.rec
+  -- #reduce Iota ⟦⟧ sorry
 
 end Test
