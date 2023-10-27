@@ -2,6 +2,8 @@ import Reflection.Vec
 import Reflection.Simple.Constructors
 import Reflection.Simple.RecursorScaffolding
 
+set_option pp.proofs true
+
 -- Maybe move this after IotaCasesScaffolding1, since we might need the constraints from 1 for ctork?
 inductive IotaCasesScaffolding2 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K)
   : (i : Nat /- actually `Fin k` -/) -> (ctors : Vec (SCtor T) i) -> (base : RecCases motive ctors) -> Type 2
@@ -37,30 +39,50 @@ def IotaCases2
   (case : @RecCase T ctor ctor.spec ctor.ctor ctor.args id motive (RecCaseScaffold ctor)) ->
     @IotaCases2 _ _ _ o_ctors recursor motive body ctors' (base case) (sub case)
 
+namespace TheMinimizedVersion
+  inductive Ret {α : Type} (k : Nat) : (i : Nat) -> (xs : Vec α i) -> Type 1
+  | done (xs : Vec α (.succ k)) : Ret k (.succ k) xs -- note that k occurs twice here.
+  | step : False -> Ret k (.succ i') (x ::: xs')
+
+  -- works with `k : Fin K` too.
+  def f (k : Nat) : (i : {i:Nat//i>k}) -> (xs : Vec α i) -> Ret k i xs
+  | ⟨.succ i', hk⟩, x ::: (xs' : Vec α i') =>
+    if h : i' = k then
+      let whatweget  : Ret i' (Nat.succ i') (x ::: xs') := Ret.done (x ::: xs')
+      let whatweneed : Ret k  (Nat.succ i') (x ::: xs') := h ▸ whatweget
+      whatweneed
+    else
+      sorry -- Ret.step ...
+end TheMinimizedVersion
+
 /-- Doesn't do much, just skips some ctors before thiscase. -/
 inductive IotaCasesScaffolding1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) (k : Fin K)
-  : (i : Nat) -> (ctors : Vec (SCtor T) i) -> (base : RecCases motive ctors) -> Type 2
-| thiscase
-  (ctors : Vec (SCtor T) _)
-  (base : RecCases motive ctors)
-  -- For example when k=0, running ctors need to have a length of `(.succ k)`, so it checks out.
-  : IotaCasesScaffolding1 o_ctors k (.succ k) ctors base
+  : (i : Nat) -> (ctors : Vec (SCtor T) i) -> Type 2
+| thiscase (ctors : Vec (SCtor T) (.succ k)) : IotaCasesScaffolding1 o_ctors k (.succ k) ctors
 | before
   (ctor : SCtor T)
-  {ctors' : Vec (SCtor T) i'}
-  (base : RecCases motive (ctor ::: ctors'))
+  (ctors' : Vec (SCtor T) i')
   :
-  (sub : (case : @RecCase T ctor ctor.spec ctor.ctor ctor.args id motive (RecCaseScaffold ctor))
-          -> IotaCasesScaffolding1 o_ctors k i' ctors' (base case))
-    -> IotaCasesScaffolding1 o_ctors k (.succ i') (ctor ::: ctors') (base)
+  (sub : (case : @RecCase T ctor _ _ _ id motive (RecCaseScaffold ctor))
+          -> IotaCasesScaffolding1 o_ctors k i' ctors' /-(base case)-/)
+    -> IotaCasesScaffolding1 o_ctors k (.succ i') (ctor ::: ctors') --(base)
 
 /-- Build the scaffolding from K to k. -/
-def IotaCasesScaffold1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) (k : Fin K) (base : RecCases motive o_ctors)
-  : IotaCasesScaffolding1 (motive := motive) o_ctors k K o_ctors base
-  := sorry
--- where go 
-
-set_option pp.proofs true
+def IotaCasesScaffold1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) (k : Fin K) --(base : RecCases motive o_ctors)
+  : IotaCasesScaffolding1 (motive := motive) o_ctors k K o_ctors --base
+  := go ⟨K, by simp [k.isLt]⟩ o_ctors -- start with all ctors and go until ctorₖ.
+where
+  go {motive : T -> Prop} {o_ctors : Vec (SCtor T) K} {k : Fin K}
+  : (i : {i : Nat // i > k}) -> (ctors : Vec (SCtor T) i) -> IotaCasesScaffolding1 (motive := motive) o_ctors k i ctors
+  | ⟨.succ i', hi'⟩, ctor ::: (ctors' : Vec (SCtor T) i') =>
+    if h : i' = k.val then
+      let whatweget
+        := IotaCasesScaffolding1.thiscase (motive := motive) (o_ctors := o_ctors) (ctor ::: ctors')
+      let whatweneed : IotaCasesScaffolding1 o_ctors k (Nat.succ i'   ) (ctor ::: ctors' )
+        := sorry
+      whatweneed
+    else
+      sorry
 
 /-- Introduces binders for each case.
   Uppercase `K` is the amount of constructors.
@@ -79,66 +101,29 @@ def IotaCases1
   (motive : T -> Prop)
   (k : Fin K)
   {ctors : Vec (SCtor T) i}
-  {base : RecCases motive ctors} -- we give it `recursor motive` as start!
-  (body : (caseₖ : True) -> (base : RecCases motive ctors) -> Prop)
-  : IotaCasesScaffolding1 (motive := motive) o_ctors k i ctors base -> Prop
-| .thiscase ctors base =>
-  let (ctor ::: ctors') := ctors
-  (case : @RecCase T ctor ctor.spec ctor.ctor ctor.args id motive (RecCaseScaffold ctor)) ->
-    IotaCases2 o_ctors recursor motive (body .intro case) ctors' (IotaCasesScaffold2 o_ctors k (base case))
-| .before (i' := i') (ctors' := ctors') ctor base sub =>
-  (case : @RecCase T ctor ctor.spec ctor.ctor ctor.args id motive (RecCaseScaffold ctor)) ->
-    let smaller : IotaCasesScaffolding1 o_ctors k i' ctors' (base case) := sub case
-    IotaCases1 (ctors := ctors') o_ctors recursor motive k (fun case'' base'' => sorry) sorry
-
--- def IotaArgsFairing
---   (ctors : Vec (SCtor T) K)
---   (recursor : Rec ctors)
---   (motive : T -> Prop)
---   (k : Fin K)
---   -- (taker : SCtorType T (Get ctors k).spec)
---   (body : T -> Prop)
---   : Prop
---   := sorry
-
--- This is about the args, so after cases.
--- def IotaAux 
---   (ctors : Vec (SCtor T) K)
---   (recursor : Rec ctors)
---   (motive : T -> Prop)
---   -- (k : Fin K)
---   (base : (t : T) -> motive t) -- or maybe this? `RecCases motive ctors ->`
---   -- (case : RecCase motive (Get ctors k).spec (Get ctors k).ctor (Get ctors k).args id)
---   -- (spec : SCtorSpec)
---   -- (ctor : SCtorType T spec)
---   :
---   (spec : SCtorSpec) ->
---   (ctor : SCtorType T spec) -> -- this is also our `t : T`, so the value we are eliminating (note that `SCtorType T []` ==β=> `T`).
---   (args : SCtorArgs T spec ctor) ->
---   (mots : Prop -> Prop) ->
---   (rhs : RecCase motive spec ctor args mots) ->
---   Prop
--- | .nil          , ctor, args, mots, rhs => base ctor = rhs
--- | .self    spec', ctor, args, mots, rhs =>
---   (arg : T) ->
---     IotaAux ctors recursor motive base spec' (ctor arg) sorry sorry (base arg)
--- | .other U spec', ctor, args, mots, rhs =>
---   (arg : U) ->
---     IotaAux ctors recursor motive base spec' (ctor arg) sorry sorry rhs
+  (base : RecCases motive ctors) -- we give it `recursor motive` as start!
+  : IotaCasesScaffolding1 (motive := motive) o_ctors k i ctors ->
+    (body :
+      (ctorₖ : SCtor T) ->
+      @RecCase T ctorₖ ctorₖ.spec ctorₖ.ctor ctorₖ.args id motive (RecCaseScaffold ctorₖ) ->
+      RecCases motive ⟦⟧ ->
+      Prop
+    ) ->
+    Prop
+| .thiscase ctors, body =>
+  let (ctorₖ ::: ctors') := ctors
+  (caseₖ : @RecCase T ctorₖ _ _ _ id motive (RecCaseScaffold ctorₖ)) ->
+    IotaCases2 o_ctors recursor motive (body ctorₖ caseₖ) ctors' (IotaCasesScaffold2 o_ctors k (base caseₖ))
+| .before (i' := i') ctor ctors' sub, body =>
+  (case : @RecCase T ctor _ _ _ id motive (RecCaseScaffold ctor)) ->
+    IotaCases1 (ctors := ctors') o_ctors recursor motive k (base case) (sub case) body
 
 def Iota (ctors : Vec (SCtor T) K) (recursor : Rec ctors) (k : Fin K) : Prop :=
   (motive : T -> Prop) ->
-    let xxx : RecCases motive ctors := recursor motive
-    IotaCases1 ctors recursor motive k fun base case =>
-      sorry
-      -- IotaAux ctors recursor motive base case (Get ctors k).spec (Get ctors k).ctor
-      -- IotaArgsFairing ctors recursor motive k fun t =>
-      --   base t = sorry
-
-
-
-
-
+    IotaCases1 ctors recursor motive k (recursor motive) (IotaCasesScaffold1 ctors k) fun ctorₖ baseₖ base =>
+      True
+      -- IotaArgs (fun recArg => base ...) fun t =>
+      --   base t = caseₖ args
 
 namespace Test
   structure _SimpleInductiveType (T : Type) where
@@ -146,4 +131,15 @@ namespace Test
     ctors : Vec (SCtor T) K
     recursor : Rec ctors
     iotas : (k : Fin K) -> Iota ctors recursor k
+
+  instance : _SimpleInductiveType ListN := {
+    ctors :=
+      ⟨.nil                   , ListN.nil,  cNil⟩ :::
+      ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
+    recursor := @ListN.rec
+    iotas := fun
+    | 0 => @ListN.iota_nil
+    | 1 => @ListN.iota_cons
+  }
+
 end Test

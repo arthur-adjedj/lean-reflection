@@ -2,38 +2,6 @@ import Reflection.Vec
 import Reflection.Simple.Constructors
 import Reflection.ListN
 
-/- # Scaffolding types (messy thoughts)
-  Maybe RecCase should return something akin to "Skipper", which will be easier to recurse through
-  for users. This would then replace the CPS approach with `mots`.
-
-  Also note that this is possible in two ways. The Iotas "Skipper" approach constructs a skipper
-  trivially, and then iterates through it, returning the rec case type as the result, not the skipper anymore.
-
-  And maybe for RecCase, constructing the "Skipper"-esque thing is the difficult part,
-  and maybe we want to return the "skipper"-esque thing itself directly.
-
-  But! Maybe this is a general code pattern, where we return a constructed inductive type which is
-  easy to traverse.
-  It might have a "id" thing which just returns the recursor type exactly, but maybe the user
-  wants to compute something else, and then using the same "skipper"-esque inductive helper type,
-  they can compute something else; for example maybe lead proofs which go through the structure
-  of recursors.
-  
-  How do you call a helper type like that? They "go through", so in a way they are helpers for
-  recursion. They also say in which way a problem becomes smaller. `RecCases` is very trivial and
-  becomes smaller in obvious ways. But `RecCase` has the weird `mots` CPS thing, so it is not obvious,
-  and here is where these helper types will help a lot. Walker types? Crutch type? Crane type?
-  Scaffolding type? Yeah scaffolding is most fitting, it even has "folding" in its name.
-
-  The idea is that every step through the scaffolding reduces the problem.
--/
-
-/-
-  ## Connection with Local Programming / Prolog
-  The way that scaffolding types work is by creating a constraint between
-  its type indices, much akin to prolog, e.g. how `plus(A, B, C)` works.
--/
-
 /-- One recursor case is for example `motive ListN.nil`, or
   `(x : Nat) -> (xs : ListN) -> motive xs -> motive (x :: xs)`.
                                              ^^^^^^^^^^^^^^^^ The conclusion, which is `motive (ctorₖ a₁ a₂ ...)`.
@@ -100,12 +68,12 @@ namespace Test
   #reduce @Rec Nat _ ⟦⟧
   #reduce @Rec Nat _ (⟨.nil, .zero, .head .zero⟩ ::: ⟦⟧)
 
-  class SimpleInductiveType (T : Type) where
+  class _SimpleInductiveTypeRecOnly (T : Type) where
     K : Nat
     ctors : Vec (SCtor T) K
     recursor : Rec ctors
 
-  instance : SimpleInductiveType Nat := {
+  instance : _SimpleInductiveTypeRecOnly Nat := {
     ctors :=
       ⟨.nil      , Nat.zero, SCtorArgs.head Nat.zero⟩ :::
       ⟨.self .nil, Nat.succ, SCtorArgs.recursive fun (n : Nat) => SCtorArgs.head (Nat.succ n)⟩ ::: ⟦⟧
@@ -119,7 +87,7 @@ namespace Test
       SCtorArgs.recursive fun (list : ListN) =>
         SCtorArgs.head <| ListN.cons n list
 
-  instance : SimpleInductiveType ListN := {
+  instance : _SimpleInductiveTypeRecOnly ListN := {
     ctors :=
       ⟨.nil                   , ListN.nil,  cNil⟩ :::
       ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
