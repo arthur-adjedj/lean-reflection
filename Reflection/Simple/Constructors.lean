@@ -7,10 +7,23 @@ inductive SCtorSpec : Type 1 where
 | self  :         SCtorSpec -> SCtorSpec
 | other : Type -> SCtorSpec -> SCtorSpec
 
+-- SCtorType T .nil === T
 def SCtorType (T : Type) : SCtorSpec -> Type
 | .nil          => T
 | .self    tail => T -> SCtorType T tail
 | .other U tail => U -> SCtorType T tail
+#reduce SCtorType Nat .nil
+
+inductive SCtorType' (T : Type) : SCtorSpec -> Type 1
+| nil (t : T) : SCtorType' T .nil
+| self (asdf : (t : T) -> SCtorType' T tail) : SCtorType' T (.self tail)
+
+-- Inversion
+def red : SCtorType' T .nil -> Type
+  := fun _ => T
+
+#reduce SCtorType'.nil 123
+#reduce red <| SCtorType'.nil 123
 
 inductive SCtorArgs : (T : Type) -> (spec : SCtorSpec) -> SCtorType T spec -> Type 1
 | head         : (f : T)                                 -> SCtorArgs T  .nil               f
@@ -21,6 +34,7 @@ structure SCtor (T : Type) where
   spec : SCtorSpec
   ctor : SCtorType T spec
   args : SCtorArgs T spec ctor
+
 
 def SCtorSpec.len : SCtorSpec -> Nat
 | .nil => 0

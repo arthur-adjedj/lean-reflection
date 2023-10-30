@@ -1,6 +1,6 @@
 import Reflection.Vec
 
-def ForallTelescope (doms : Vec (Sort u) k) (body : ((idx : Fin k) -> Get doms idx) -> Sort u) : Sort u :=
+def ForallTelescope (doms : Vec (Sort u) k) (body : ((idx : Fin k) -> Get doms idx) -> Type (max u v)) : Type (max u v) :=
   match doms with
   | .nil => body (fun ⟨_, h⟩ => absurd h (Nat.not_lt_zero _))
   | .cons A doms' => (x : A) -> ForallTelescope doms' fun f => body fun
