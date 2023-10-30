@@ -1,4 +1,5 @@
 import Reflection.Vec
+import Reflection.UnifyCmd
 import Reflection.Simple.Constructors
 import Reflection.ListN
 
@@ -46,19 +47,28 @@ where
         go (mots := mots) spec' (ctor' x) (args' x)
 
 /-- Uses scaffolding to construct the recursor type. -/
-def RecCase {mots : Prop -> Prop} (motive : T -> Prop) : @RecCaseScaffolding T motive o_ctor spec ctor args mots -> Prop
-| .ground mots ctor => mots (motive ctor)
-| .nonrecursive (U := U) mots sub => (x : U) -> RecCase motive (sub x)
-| .recursive             mots sub =>
-  -- This apparent simplicity is deceptive! The implicit `mots` parameter to the recursive invocation
-  -- is actually inferred to be `fun P => mots (motive x -> P)`, due to the type of `sub` in `.recursive`.
-  (x : T) -> RecCase motive (sub x)
+def RecCase (motive : T -> Prop) (o_ctor : SCtor T) (ctor : SCtor T) (mots : Prop -> Prop)
+  : @RecCaseScaffolding T motive o_ctor ctor.spec ctor.ctor ctor.args mots -> Prop
+  := go motive mots o_ctor
+where
+  /-- Literally the same as RecCase, just `ctor` unpacked. -/
+  @[reducible]
+  go (motive : T -> Prop) (mots : Prop -> Prop) (o_ctor : SCtor T) {spec} {ctor} {args}
+  : @RecCaseScaffolding T motive o_ctor spec ctor args mots -> Prop
+  | .ground mots ctor => mots (motive ctor)
+  | .nonrecursive (U := U) mots sub => (x : U) -> go motive mots o_ctor (sub x)
+  | .recursive             mots sub =>
+    -- This apparent simplicity is deceptive! The implicit `mots` parameter to the recursive invocation
+    -- is actually inferred to be `fun P => mots (motive x -> P)`, due to the type of `sub` in `.recursive`.
+    (x : T) -> go motive _ o_ctor (sub x)
+    -- This would have also worked, but I think it's cool that Lean is able to infer it all on its own:
+    -- (x : T) -> go motive (fun P => mots (motive x -> P)) o_ctor (sub x)
 
 def RecCases (motive : T -> Prop) : Vec (SCtor T) K -> Prop
 | ⟦⟧ => (t : T) -> motive t
-| ctor ::: rest =>
-  @RecCase T ctor ctor.spec ctor.ctor ctor.args id motive (RecCaseScaffold ctor) ->
-    @RecCases T _ motive rest
+| ctor ::: ctors' =>
+  RecCase motive ctor ctor id (RecCaseScaffold ctor) ->
+    RecCases motive ctors'
 
 def Rec : Vec (SCtor T) k -> Prop
 | ctors => (motive : T -> Prop) -> RecCases motive ctors
@@ -87,11 +97,19 @@ namespace Test
       SCtorArgs.recursive fun (list : ListN) =>
         SCtorArgs.head <| ListN.cons n list
 
-  instance : _SimpleInductiveTypeRecOnly ListN := {
+  instance listn : _SimpleInductiveTypeRecOnly ListN := {
     ctors :=
       ⟨.nil                   , ListN.nil,  cNil⟩ :::
       ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
     recursor := @ListN.rec
   }
+
+  #unify Rec listn.ctors =?= ({motive : ListN → Prop} →
+    motive .nil →
+    ((a : Nat) → (a_1 : ListN) → ?b → motive (ListN.cons a a_1)) →
+    ?asdf
+    -- (t : ListN) →
+    -- motive t
+  )
 
 end Test

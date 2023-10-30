@@ -1,3 +1,4 @@
+import Lean.PrettyPrinter.Delaborator
 /-
   # Ctor Spec
 -/
@@ -21,6 +22,7 @@ structure SCtor (T : Type) where
   spec : SCtorSpec
   ctor : SCtorType T spec
   args : SCtorArgs T spec ctor
+
 
 def SCtorSpec.len : SCtorSpec -> Nat
 | .nil => 0
