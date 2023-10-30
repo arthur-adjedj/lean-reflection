@@ -1,4 +1,3 @@
-import Lean.PrettyPrinter.Delaborator
 /-
   # Ctor Spec
 -/

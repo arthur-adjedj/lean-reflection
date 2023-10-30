@@ -1,25 +1,70 @@
 import Reflection.Vec
 import Reflection.Simple.Constructors
 
-/-- Helper function. Computes the "match arm" in the recursor type for one constructor.
-  For example, for `Nat.succ` returns `(n : Nat) -> motive n → motive (Nat.succ n)`.
-  The `mots` is a bit of hack to get all motives towards the right, think of it as an accumulator. -/
-def RecCase (motive : T -> Prop) (spec : SCtorSpec) (ctor : SCtorType T spec) (h : SCtorArgs T spec ctor) (mots : Prop -> Prop) : Prop :=
-  match spec with
-  | .nil => mots <| motive ctor
-  | .self specTail =>
-    (x : T) ->
-      let .recursive h' := h
-      RecCase motive specTail (ctor x) (h' x) (fun P => mots (motive x -> P))
-  | .other U specTail =>
-    (x : U) ->
-      let .nonrecursive h' := h
-      RecCase motive specTail (ctor x) (h' x) mots
+/-- One recursor case is for example `motive ListN.nil`, or
+  `(x : Nat) -> (xs : ListN) -> motive xs -> motive (x :: xs)`.
+                                             ^^^^^^^^^^^^^^^^ The conclusion, which is `motive (ctorₖ a₁ a₂ ...)`.
+                                ^^^^^^^^^ require motives for recursive args [motive a_{r₁}, motive a_{r₂}, ...]
+   ^^^^^^^^^^^^^^^^^^^^^^^^^ args [a₁, a₂, ...]
+  The `ctors` argument is all constructors.
+-/
+inductive RecCaseScaffolding {motive : T -> Prop} (o_ctor : SCtor T)
+  : (spec : SCtorSpec) -> (ctor : SCtorType T spec) -> (args : SCtorArgs T spec ctor) -> (Prop -> Prop) -> Type 2
+/-- When we get to this point, `mots` is constrained to be exactly the required hypotheses for the
+  recursive args. Why? Note that we have `o_ctor`, which is the original constructor,
+  but spec/ctor/args have all hit the bottom (.nil etc).
+  Then when a function (e.g. `RecCase`) is given a `RecCaseScaffolding o_ctor o_ctor.spec octor.ctor octor.args id`,
+  the only way to get to the ground case constrains `mots` properly once we get to the ground case.
+  Although we can pick something other than `id` as the starting point.  -/
+| ground
+  (mots : Prop -> Prop)
+  (ctor : T)
+  : RecCaseScaffolding o_ctor .nil ctor (.head ctor) mots 
+| recursive
+  (mots : Prop -> Prop)
+  (sub : (x : T) -> @RecCaseScaffolding T motive o_ctor spec' (ctor x) (args' x) (fun P => mots (motive x -> P)))
+  : RecCaseScaffolding o_ctor (.self spec') (ctor) (.recursive args') (mots)
+| nonrecursive
+  (mots : Prop -> Prop)
+  (sub : (x : U) -> @RecCaseScaffolding T motive o_ctor spec' (ctor x) (args' x) (mots))
+  : RecCaseScaffolding o_ctor (.other U spec') (ctor) (.nonrecursive args') (mots)
 
-def RecCases (motive : T -> Prop) : Vec (SCtor T) k -> Prop
+/-- Build the scaffolding. -/
+def RecCaseScaffold {motive : T -> Prop} (o_ctor : SCtor T)
+  : @RecCaseScaffolding T motive o_ctor o_ctor.spec o_ctor.ctor o_ctor.args mots
+  := go o_ctor.spec o_ctor.ctor o_ctor.args
+where
+  go {mots : Prop -> Prop} {o_ctor : SCtor T} : (spec : SCtorSpec) -> (ctor : SCtorType T spec) -> (args : SCtorArgs T spec ctor)
+    -> @RecCaseScaffolding T motive o_ctor spec ctor args mots
+  | .nil, ctor, args => let .head ctor := args; .ground mots ctor
+  | .self spec', ctor', .recursive args' =>
+      .recursive mots fun x =>
+        go (mots := fun P => mots (motive x -> P)) spec' (ctor' x) (args' x)
+  | .other _ spec', ctor', .nonrecursive args' => 
+      .nonrecursive mots fun x =>
+        go (mots := mots) spec' (ctor' x) (args' x)
+
+/-- Uses scaffolding to construct the recursor type. -/
+def RecCase (motive : T -> Prop) (o_ctor : SCtor T) (ctor : SCtor T) (mots : Prop -> Prop)
+  : @RecCaseScaffolding T motive o_ctor ctor.spec ctor.ctor ctor.args mots -> Prop
+  := go motive mots o_ctor
+where
+  go (motive : T -> Prop) (mots : Prop -> Prop) (o_ctor : SCtor T) {spec} {ctor} {args}
+  : @RecCaseScaffolding T motive o_ctor spec ctor args mots -> Prop
+  | .ground mots ctor => mots (motive ctor)
+  | .nonrecursive (U := U) mots sub => (x : U) -> go motive mots o_ctor (sub x)
+  | .recursive             mots sub =>
+    -- This apparent simplicity is deceptive! The implicit `mots` parameter to the recursive invocation
+    -- is actually inferred to be `fun P => mots (motive x -> P)`, due to the type of `sub` in `.recursive`.
+    (x : T) -> go motive _ o_ctor (sub x)
+    -- This would have also worked, but I think it's cool that Lean is able to infer it all on its own:
+    -- (x : T) -> go motive (fun P => mots (motive x -> P)) o_ctor (sub x)
+
+def RecCases (motive : T -> Prop) : Vec (SCtor T) K -> Prop
 | ⟦⟧ => (t : T) -> motive t
-| ⟨spec, ctor, hctor⟩ ::: rest => (RecCase motive spec ctor hctor id) -> RecCases motive rest
+| ctor ::: ctors' =>
+  RecCase motive ctor ctor id (RecCaseScaffold ctor) ->
+    RecCases motive ctors'
 
-/-- Computes the recursor type for the given constructor spec. -/
 def Rec : Vec (SCtor T) k -> Prop
 | ctors => (motive : T -> Prop) -> RecCases motive ctors

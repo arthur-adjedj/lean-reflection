@@ -2,7 +2,7 @@ import Reflection.Vec
 import Reflection.UnifyCmd
 import Reflection.DelabStructs
 import Reflection.Simple.Constructors
-import Reflection.Simple.RecursorScaffolding
+import Reflection.Simple.Recursor
 
 set_option pp.proofs true
 
@@ -21,7 +21,7 @@ inductive IotaCasesScaffolding2 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K)
   )
     -> IotaCasesScaffolding2 o_ctors (.succ i') (ctor ::: ctors') (base)
 
-def IotaCasesScaffold2 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) 
+def IotaCasesScaffold2 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K)
   : (i : Nat) -> (ctors : Vec (SCtor T) i) -> (base : RecCases motive ctors) -> IotaCasesScaffolding2 (motive := motive) o_ctors i ctors base
 | .zero   ,              ⟦⟧, base => .ground base
 | .succ i', ctor ::: ctors', base => .after ctor base (fun case => IotaCasesScaffold2 o_ctors i' ctors' (base case))
