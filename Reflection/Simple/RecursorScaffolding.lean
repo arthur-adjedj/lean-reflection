@@ -51,8 +51,6 @@ def RecCase (motive : T -> Prop) (o_ctor : SCtor T) (ctor : SCtor T) (mots : Pro
   : @RecCaseScaffolding T motive o_ctor ctor.spec ctor.ctor ctor.args mots -> Prop
   := go motive mots o_ctor
 where
-  /-- Literally the same as RecCase, just `ctor` unpacked. -/
-  @[reducible]
   go (motive : T -> Prop) (mots : Prop -> Prop) (o_ctor : SCtor T) {spec} {ctor} {args}
   : @RecCaseScaffolding T motive o_ctor spec ctor args mots -> Prop
   | .ground mots ctor => mots (motive ctor)
@@ -72,44 +70,3 @@ def RecCases (motive : T -> Prop) : Vec (SCtor T) K -> Prop
 
 def Rec : Vec (SCtor T) k -> Prop
 | ctors => (motive : T -> Prop) -> RecCases motive ctors
-
-
-namespace Test
-  #reduce @Rec Nat _ ⟦⟧
-  #reduce @Rec Nat _ (⟨.nil, .zero, .head .zero⟩ ::: ⟦⟧)
-
-  class _SimpleInductiveTypeRecOnly (T : Type) where
-    K : Nat
-    ctors : Vec (SCtor T) K
-    recursor : Rec ctors
-
-  instance : _SimpleInductiveTypeRecOnly Nat := {
-    ctors :=
-      ⟨.nil      , Nat.zero, SCtorArgs.head Nat.zero⟩ :::
-      ⟨.self .nil, Nat.succ, SCtorArgs.recursive fun (n : Nat) => SCtorArgs.head (Nat.succ n)⟩ ::: ⟦⟧
-    recursor := @Nat.rec
-  }
-
-  def cNil : SCtorArgs ListN (.nil) ListN.nil :=
-    SCtorArgs.head ListN.nil
-  def cCons : SCtorArgs ListN (.other Nat (.self .nil)) ListN.cons :=
-    SCtorArgs.nonrecursive fun (n : Nat) =>
-      SCtorArgs.recursive fun (list : ListN) =>
-        SCtorArgs.head <| ListN.cons n list
-
-  instance listn : _SimpleInductiveTypeRecOnly ListN := {
-    ctors :=
-      ⟨.nil                   , ListN.nil,  cNil⟩ :::
-      ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
-    recursor := @ListN.rec
-  }
-
-  #unify Rec listn.ctors =?= ({motive : ListN → Prop} →
-    motive .nil →
-    ((a : Nat) → (a_1 : ListN) → ?b → motive (ListN.cons a a_1)) →
-    ?asdf
-    -- (t : ListN) →
-    -- motive t
-  )
-
-end Test

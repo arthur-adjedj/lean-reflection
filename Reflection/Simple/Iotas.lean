@@ -41,10 +41,6 @@ def IotaCases2
   (case : RecCase motive ctor ctor id (RecCaseScaffold ctor)) ->
     @IotaCases2 _ _ _ o_ctors recursor motive body ctors' (base case) (sub case)
 
-#reduce IotaCases2
-#reduce IotaCases2 ⟦⟧ sorry (fun t => t = t) (fun base => sorry)
-#reduce IotaCases2 ⟦⟧ sorry (fun t => t = t) (fun base => base = base) ⟦⟧
-
 /-- Doesn't do much, just skips some ctors before thiscase. -/
 inductive IotaCasesScaffolding1 {motive : T -> Prop} (o_ctors : Vec (SCtor T) K) (k : Fin K)
   : (i : Nat) -> (ctors : Vec (SCtor T) i) -> Type 2
@@ -114,11 +110,8 @@ def IotaCases1
   (case : RecCase motive ctor ctor id (RecCaseScaffold ctor)) ->
     IotaCases1 (ctors := ctors') o_ctors recursor motive k (base case) (sub case) body
 
--- TODO: dumb idea, but you could take a `RecCaseScaffold _` as parameter to IotaArgs, and then pass it to `caseₖ`, **and also pattern match on it**, thus obtaining the constraints you need!
--- But it^ maybe shouldn't be necessary. Below `c x` should work at least for the nonrecursive case...
 def IotaArgs {motive : T -> Prop} (o_ctor : SCtor T) (base : RecCases motive ⟦⟧)
   :
-  -- (ctorₖ : SCtor T) ->
   (spec : SCtorSpec) ->
   (ctor : SCtorType T spec) ->
   (args : SCtorArgs T spec ctor) ->
@@ -140,8 +133,8 @@ def IotaArgs {motive : T -> Prop} (o_ctor : SCtor T) (base : RecCases motive ⟦
       have : RecCase motive o_ctor ⟨.other U spec', ctor, .nonrecursive args⟩ mots (.nonrecursive mots sub)
         = ((a : U) -> RecCase motive o_ctor ⟨spec', ctor a, args a⟩ mots (sub a))
         := by simp [RecCase, RecCase.go]
-      have xxx : RecCase motive o_ctor ⟨spec', ctor a, args a⟩ mots (sub a) := (this ▸ caseₖ) a
-      IotaArgs o_ctor base spec' (ctor a) (args a) mots (sub a) xxx demotivate body
+      have caseₖ' : RecCase motive o_ctor ⟨spec', ctor a, args a⟩ mots (sub a) := (this ▸ caseₖ) a
+      IotaArgs o_ctor base spec' (ctor a) (args a) mots (sub a) caseₖ' demotivate body
 
   | .self    spec', ctor, .recursive args   , mots, .recursive    _ sub, caseₖ, demotivate, body =>
     (a : T) ->
@@ -165,32 +158,3 @@ def Iota (ctors : Vec (SCtor T) K) (recursor : Rec ctors) (k : Fin K) : Prop :=
         -- ^^^^^^^^^^^ base ^^^^^^^^^^^                                     ^^^^^^^^^^^ base ^^^^^^^^^^^
         --                              ^^^^^^^ t ^^^^^^^
         base t = rhs
-
-namespace Test
-  class _SimpleInductiveType (T : Type) where
-    K : Nat -- the amount of constructors
-    ctors : Vec (SCtor T) K
-    recursor : Rec ctors
-    iotas : (k : Fin K) -> Iota ctors recursor k
-
-  instance listNinst : _SimpleInductiveType ListN := {
-    ctors :=
-      ⟨.nil                   , ListN.nil,  cNil⟩ :::
-      ⟨.other Nat (.self .nil), ListN.cons, cCons⟩ ::: ⟦⟧
-    recursor := @ListN.rec
-    iotas := fun
-    | 0 => ListN.iota_cons
-    | 1 => ListN.iota_nil
-  }
-
-  #unify Iota listNinst.ctors @ListN.rec 0 =?=
-    (motive : ListN -> Prop) ->
-    (case_nil : motive ListN.nil) ->
-    (case_cons : (head : Nat) → (tail : ListN) → motive tail → motive (ListN.cons head tail)) ->
-    (head : Nat) ->
-    (tail : ListN) ->
-    @ListN.rec motive case_nil case_cons (ListN.cons head tail)
-        = case_cons head tail (@ListN.rec motive case_nil case_cons tail)
-
-end Test
-

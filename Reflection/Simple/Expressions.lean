@@ -11,7 +11,7 @@ set_option genInjectivity false in
 inductive SimpleValue : (T : Type) -> SimpleType T -> T -> Type 2
 | ctor
   (ind : SimpleInductiveType T)
-  (i : Fin ind.k)
+  (i : Fin ind.K)
   (args : Args T)
   : SimpleValue T (.ind ind) (apply (Get ind.ctors i).ctor args)
 | lam
