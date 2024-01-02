@@ -129,8 +129,20 @@ def TmₛA : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA �
 
 example {Vec : Nat -> Type} : @TmₛA (SPi Nat (fun _ => U) :: []) U ((.var .vz) @ 123) ⟨Vec, ⟨⟩⟩ = Vec 123 := rfl
 
-/-- Interprets a constructor type. -/
-def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type 1
-| El      A, γₛ => sorry
-| PPi   T A, γₛ => (t : T) -> TyₚA (A t) γₛ
-| PFunc T A, γₛ => sorry
+/-- Interprets a constructor type. See below for examples. -/
+def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type
+| El    Self, γₛ => TmₛA Self γₛ
+| PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
+| PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
+
+example {Vec : Nat -> Type} {_A : Type} : @TyₚA (SPi Nat (fun _ => U) :: []) V_nil ⟨Vec, ⟨⟩⟩ = (Vec 0)
+  := rfl
+
+example {Vec : Nat -> Type} {A : Type}
+  : @TyₚA (SPi Nat (fun _ => U) :: []) (V_cons A) ⟨Vec, ⟨⟩⟩
+  = ((n : Nat) -> A -> Vec n -> Vec (n + 1))
+  := rfl
+
+def ConₚA : Conₚ Γₛ -> ConₛA Γₛ -> Type
+| .nil, _ => PUnit
+| .cons A Γ, γₛ => TyₚA A γₛ × ConₚA Γ γₛ
