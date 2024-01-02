@@ -124,16 +124,10 @@ the actual `Vec` at all, it is merely a de-Brujin index into the context, which 
 The purpose of `TmₛA` is to interpret the syntactic `"Vec 123"` into the actual `Vec 123`,
 by giving it the actual `Vec` interpretation via the `γₛ : ConₛA Γₛ`. -/
 def TmₛA : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
-| A :: Γ, .(A), @Tmₛ.var _   _ vz    , ⟨a, γₛ⟩ => a
-| B :: Γ,   A , @Tmₛ.var _   _ (vs v), ⟨a, γₛ⟩ => TmₛA (.var v) γₛ
-|      Γ, .(_), @Tmₛ.app Γ T _ t u   ,     γₛ  => (TmₛA t γₛ) u
+| Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
+| Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
 
-/- TmₛA from https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IFA.agda#lines-16:19
-  _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
-  (var vvz ᵃt)     (γ , α) = α
-  (var (vvs t) ᵃt) (γ , α) = (var t ᵃt) γ
-  ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
--/
+example {Vec : Nat -> Type} : @TmₛA (SPi Nat (fun _ => U) :: []) U ((.var .vz) @ 123) ⟨Vec, ⟨⟩⟩ = Vec 123 := rfl
 
 /-- Interprets a constructor type. -/
 def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type 1
