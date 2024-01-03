@@ -14,6 +14,9 @@ inductive Conₛ
 notation "[]" => Conₛ.nil
 infixr:67 " :: " => Conₛ.cons
 
+/-- De-brujin variable referring to an entry in the context.
+A context is for example `["Even", "Odd"]`, then `.vz` refers to `"Even"`.
+These are nameless, the quotations are only to ease explanation. -/
 inductive Varₛ : Conₛ -> Tyₛ -> Type 1
 | vz :               Varₛ (Aₛ :: Γₛ) Aₛ
 | vs : Varₛ Γₛ Aₛ -> Varₛ (_  :: Γₛ) Aₛ
@@ -40,6 +43,15 @@ infixl:50 " @ " => Tmₛ.app
 
 /-- Constructor types `... -> Self ...`.
 
+Example `"(n : Nat) -> A -> Vec n -> Vec (n + 1)"`:
+```
+def V_cons (A : Type) : Tyₚ Vₛ :=
+  PPi Nat fun n => -- (n : Nat) ->
+    PPi A fun _ => -- A ->
+      PFunc ((Tmₛ.var vz) @ n) <| -- Vec n ->
+        El ((Tmₛ.var vz) @ (n + 1)) -- Vec (n + 1)
+```
+
 The only way to create a `Tyₚ` is by ending it with a `El`, which must be a term in the universe `U`.
 The only way to create a term like that is by using `Tmₛ.app` and `Tmₛ.var`.
 For example the variables are `Even` and `Odd`, i.e. the other types in the mutual block being defined,
@@ -49,10 +61,20 @@ inductive Tyₚ : Conₛ -> Type 1
 | PPi   : (T : Type) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
 /-- Allows us to introduce nested binders `(x : Self ...) -> ...`.
   `PFunc` is non-dependent, because it makes no sense to have `(self : Self ...) -> Self self`.
-  (...but once you have ind-ind or ind-rec, it might be possible?) -/
+  (...but once you have ind-ind or ind-rec, it might be sensible?) -/
 | PFunc : Tmₛ Γₛ U   ->       Tyₚ Γₛ  -> Tyₚ Γₛ
 open Tyₚ
 
+/-- List of constructor descriptions.
+
+Example (natural numbers):
+```
+El (.var .vz) :: PFunc (.var .vz) (El (.var .vz)) :: []
+```
+Example (vectors):
+```
+V_nil :: V_cons A :: []
+``` -/
 inductive Conₚ : Conₛ -> Type 1
 | nil : Conₚ Γ
 | cons : Tyₚ Γ -> Conₚ Γ -> Conₚ Γ
@@ -102,6 +124,8 @@ example : ConₛA Vₛ = ((Nat -> Type) × PUnit.{2}) := by rfl
 
   For example if `Γₛ` is `["(n:Nat) -> U"]`, and if `γₛ` is `⟨Vec, ()⟩`,
   then `VarₛA vz γₛ` will reduce to `Vec`.
+
+  This function returns an actual (unquoted) Lean type, e.g. `Vec`.
 -/
 def VarₛA : {Γₛ : Conₛ} -> Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
 | _Aₛ :: _Γₛ, vz  , ⟨a, _ ⟩ => a
@@ -129,20 +153,45 @@ def TmₛA : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA �
 
 example {Vec : Nat -> Type} : @TmₛA (SPi Nat (fun _ => U) :: []) U ((.var .vz) @ 123) ⟨Vec, ⟨⟩⟩ = Vec 123 := rfl
 
-/-- Interprets a constructor type. See below for examples. -/
+/-- Interprets a constructor type. See below for examples.  Example:
+```
+TyₚA (V_cons A) ⟨Vec, ⟨⟩⟩
+```
+reduces to the type of `Vec.cons` as you would expect:
+```
+(n : Nat) -> A -> Vec n -> Vec (n + 1)
+``` -/
 def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type
 | El    Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
 
-example {Vec : Nat -> Type} {_A : Type} : @TyₚA (SPi Nat (fun _ => U) :: []) V_nil ⟨Vec, ⟨⟩⟩ = (Vec 0)
+example {Vec : Nat -> Type} {_A : Type}
+  : TyₚA V_nil ⟨Vec, ⟨⟩⟩
+  = Vec 0
   := rfl
 
 example {Vec : Nat -> Type} {A : Type}
-  : @TyₚA (SPi Nat (fun _ => U) :: []) (V_cons A) ⟨Vec, ⟨⟩⟩
+  : TyₚA (V_cons A) ⟨Vec, ⟨⟩⟩
   = ((n : Nat) -> A -> Vec n -> Vec (n + 1))
   := rfl
 
+/-- Interprets a (mutual) inductive type. This is just `TyₚA` for each ctor joined with `×`.
+Example:
+```
+ConₚA (V_nil :: V_cons A :: []) ⟨Vec, ⟨⟩⟩
+```
+reduces to the Lean type
+```
+  (Vec 0) -- `Vec.nil`
+× ((n : Nat) -> A -> Vec n -> Vec (n + 1)) -- `Vec.cons`
+× Unit
+``` -/
 def ConₚA : Conₚ Γₛ -> ConₛA Γₛ -> Type
 | .nil, _ => PUnit
 | .cons A Γ, γₛ => TyₚA A γₛ × ConₚA Γ γₛ
+
+example {Vec : Nat -> Type} {A : Type}
+  : ConₚA (V A) ⟨Vec, ⟨⟩⟩
+  = ((Vec 0) × ((n : Nat) -> A -> Vec n -> Vec (n + 1)) × Unit)
+  := rfl
