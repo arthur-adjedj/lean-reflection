@@ -17,3 +17,5 @@ abbrev Get {α : Sort u} : Vec α n -> Fin n -> α
 def Map {α : Sort u} : Vec α n -> (f : α -> β) -> Vec β n
 | .nil, f => .nil
 | .cons x xs, f => .cons (f x) (Map xs f)
+
+#check Vec.rec

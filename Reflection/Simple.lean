@@ -340,17 +340,24 @@ theorem nop (t : Tm Ω ⬝) : TmA t (ConT Ω Subst.id) = t := by
   simp only [<- TmT t Subst.id, subst_id t, TyT]
 
 /-- The eliminator. -/
-def E {XD : Tm Ω ⬝ -> Type} (ωD : ConD Ω XD (ConT Ω Subst.id)) (t : Tm Ω ⬝) : XD t
+def E ⦃XD : Tm Ω ⬝ -> Type⦄ (ωD : ConD Ω XD (ConT Ω Subst.id)) (t : Tm Ω ⬝) : XD t
   := nop t ▸ TmD t ωD
 
-def TyE : {XD : Tm Ω ⬝ -> Type} -> (ωD : ConD Ω XD (ConT Ω Subst.id)) -> (A : Ty) -> (t : Tm Ω A) -> TyS A (E ωD) (TmA t (ConT Ω Subst.id)) (TmD t ωD)
+-- set_option pp.explicit true in
+set_option pp.proofs true in
+def TyE : ⦃XD : Tm Ω ⬝ -> Type⦄ -> (ωD : ConD Ω XD (ConT Ω Subst.id)) -> (A : Ty) -> (t : Tm Ω A) -> TyS A (E ωD) (TmA t (ConT Ω Subst.id)) (TmD t ωD)
 | XD, ωD, ⬝, t => by
-  -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
+
+  -- ! https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
   have (a b : Tm Ω ⬝) (h : a = b) (d : TyD ⬝ (XD .) a)
     : TyS ⬝ (E ωD) a d = TyS ⬝ (E ωD) b (h ▸ d)
     := by subst h; rfl
+
   rw [this (TmA t (ConT Ω Subst.id)) t (nop t) (TmD t ωD)]
-  rw [TyS, E]
+  rw [TyS]
+  rewrite [E]
+  rfl
+
 | XD, ωD, ⬝ ->> A, t => by
   rw [TyS]
   intro u
