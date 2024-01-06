@@ -49,8 +49,8 @@ inductive Tmₛ : Conₛ -> Tyₛ -> Type 1
 | app : Tmₛ Γ (SPi T A) -> (arg : T) -> Tmₛ Γ (A arg)
 infixl:50 " @ " => Tmₛ.app
 
--- ! This fails:
-gen_injective_theorems% Tmₛ
+-- -- ! This fails:
+-- gen_injective_theorems% Tmₛ
 
 /-- Constructor types `... -> Self ...`.
 
@@ -144,11 +144,11 @@ def VarₛA : {Γₛ : Conₛ} -> Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA A
 
 /-- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
-TmₛA ["Nat -> Type"] "Type" "Vec 123" ⟨Vec, ()⟩
+@TmₛA ["Nat -> Type"] "Type" "Vec 123" ⟨Vec, ()⟩
 ```
 reduces to:
 ```
-(TmₛA ["Nat -> Type"] "Type" "Vec" ⟨Vec, ()⟩) 123
+(@TmₛA ["Nat -> Type"] "Type" "Vec" ⟨Vec, ()⟩) 123
 ```
 reduces to:
 ```
@@ -172,8 +172,6 @@ def TmₛA : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA �
 | Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
 | Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
 
--- ! Why doesn't `by rfl` work for these two? Because of this I have to use casts in TmₛD which then spreads all over the place.
-@[simp] theorem TmₛA_var' : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rfl
 @[simp] theorem TmₛA_var  : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rw [TmₛA]
 @[simp] theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
 
@@ -214,7 +212,7 @@ reduces to the Lean type
 × Unit
 ``` -/
 def ConₚA : Conₚ Γₛ -> ConₛA Γₛ -> Type
-| .nil, _ => PUnit
+| .nil, _ => Unit
 | .cons A Γ, γₛ => TyₚA A γₛ × ConₚA Γ γₛ
 
 example {Vec : Nat -> Type} {A : Type}
@@ -262,18 +260,11 @@ for this is, again with `VarₛD` inlined:
 ``` -/
 -- ! TmₛD needs casts because reduction behaviour of TmₛA is broken.
 def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ  Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
-| A :: Γₛ, _, γₛ, .var v                    , γD => TmₛA_var ▸ VarₛD v γD
-|      Γₛ, _, γₛ, .app (T := T) (A := A) t u, γD => TmₛA_app ▸ TmₛD t γD u
+|  _, _, γₛ, .var v                    , γₛD => TmₛA_var.symm ▸ VarₛD v γₛD
+| Γₛ, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛA_app.symm ▸ TmₛD t γₛD u
 
-#eval Lean.Meta.getEqnsFor? ``TmₛA -- Works just fine.
-#eval Lean.Meta.getEqnsFor? ``TmₛD -- ! TmₛD fails to generate equation theorems.
-
--- Manually proving equation theorems (.var, then .app) for TmₛD:
-theorem TmₛD_var {v : Varₛ Γₛ Aₛ} {γₛD : ConₛD Γₛ γₛ} : TmₛD (Tmₛ.var v) γₛD = TmₛA_var ▸ VarₛD v γₛD := by
-  unfold TmₛD
-  cases Γₛ with
-  | nil => sorry -- I give up.
-  | cons => simp
+theorem TmₛD_var : TmₛD (Tmₛ.var v) γₛD = TmₛA_var.symm ▸ VarₛD v γₛD := by rw [TmₛD]
+theorem TmₛD_app : TmₛD (t @ u)     γₛD = TmₛA_app.symm ▸ TmₛD t γₛD u := by rw [TmₛD]
 
 /-- Example:
 ```
@@ -287,9 +278,9 @@ Example:
 ``` -/
 -- Note: The `Self` here can be a little misleading, as it may be a nested type with different indices.
 def TyₚD : (A : Tyₚ Γₛ) -> ConₛD Γₛ γₛ -> TyₚA A γₛ -> Type
-| El         Self, γD, self => TmₛD Self γD self
-| PPi   T    Rest, γD, f    => (t : T) -> TyₚD (Rest t) γD (f t)
-| PFunc Self Rest, γD, f    => (self : TmₛA Self γₛ) -> TmₛD Self γD self -> TyₚD Rest γD (f self)
+| El         Self, γD, self =>                                               TmₛD Self γD self
+| PPi   T    Rest, γD, f    => (t : T) ->                                    TyₚD (Rest t) γD (f t)
+| PFunc Self Rest, γD, f    => {self : TmₛA Self γₛ} -> TmₛD Self γD self -> TyₚD Rest γD (f self)
 
 inductive Vec (A : Type) : Nat -> Type
 | nil : Vec A 0
@@ -315,7 +306,7 @@ reduces to
 × PUnit
 ``` -/
 def ConₚD : (Γ : Conₚ Γₛ) -> ConₛD Γₛ γₛ -> ConₚA Γ γₛ -> Type
-| .nil, _, _ => PUnit
+| .nil, _, _ => Unit
 | .cons A Γ, γD, ⟨a, γ⟩ => TyₚD A γD a × ConₚD Γ γD γ
 
 example {P : (n : Nat) -> Vec A n -> Type}
@@ -323,46 +314,88 @@ example {P : (n : Nat) -> Vec A n -> Type}
   = (
         (P 0 Vec.nil)
       × ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
-      × PUnit
+      × Unit
     )
   := rfl
 
+
+
+
+
 -- ## Sections
 
+/-- Example:
+```
+TyₛS (SPi Nat (fun _ => U)) (Vec A) (fun _ _ => R)
+```
+reduces to
+```
+(n : Nat) -> (v : Vec A n) -> R
+``` -/
 def TyₛS : (Aₛ : Tyₛ) -> (αₛ : TyₛA Aₛ) -> TyₛD Aₛ αₛ -> Type
 | U       , T , TD  => (t : T) -> TD t
 | SPi T Aₛ, fₛ, fₛd => (t : T) -> TyₛS (Aₛ t) (fₛ t) (fₛd t)
 
+example {A R} : TyₛS (SPi Nat (fun _ => U)) (Vec A) (fun _ _ => R) = ((n : Nat) -> (v : Vec A n) -> R) := rfl
+
+/-- Example:
+```
+ConₛS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨fun _ _ => R, ⟨⟩⟩
+```
+reduces to
+```
+  ((n : Nat) -> (v : Vec A n) -> R)
+× PUnit
+``` -/
 def ConₛS : (Γₛ : Conₛ) -> (γₛ : ConₛA Γₛ) -> ConₛD Γₛ γₛ -> Type
-| .nil, ⟨⟩, ⟨⟩ => PUnit
+| .nil, ⟨⟩, ⟨⟩ => Unit
 | .cons Aₛ Γₛ, ⟨αₛ, γₛ⟩, ⟨αₛd, γₛd⟩ => TyₛS Aₛ αₛ αₛd × ConₛS Γₛ γₛ γₛd
+
+example {A R} : ConₛS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨fun _ _ => R, ⟨⟩⟩ = (((n : Nat) -> (v : Vec A n) -> R) × Unit) := rfl
 
 def VarₛS : (x : Varₛ Γₛ Aₛ) -> ConₛS Γₛ γₛ γD -> TyₛS Aₛ (VarₛA x γₛ) (VarₛD x γD)
 | .vz  , ⟨αₛS, γₛS⟩ => αₛS
 | .vs v, ⟨ _, γₛS⟩ => VarₛS v γₛS
 
-theorem eq_cast_trans (h₁ : A = B) (h₂ : B = C) (x : A) : h₂ ▸ h₁ ▸ x = (h₂ ▸ h₁) ▸ x := by cases h₁; cases h₂; rfl -- https://leanprover.zulipchat.com/#narrow/stream/217875-Is-there-code-for-X.3F/topic/.28h.E2.82.82.20.E2.96.B8.20h.E2.82.81.29.20.E2.96.B8.20x.20.3D.20h.E2.82.82.20.E2.96.B8.20.28h.E2.82.81.20.E2.96.B8.20x.29/near/411362225 wow this URL
-@[simp] theorem eq_symm_cancel (T : B) (h : A = B) : h ▸ h.symm ▸ T = T := by rw [eq_cast_trans]
+-- https://leanprover.zulipchat.com/#narrow/stream/217875-Is-there-code-for-X.3F/topic/.28h.E2.82.82.20.E2.96.B8.20h.E2.82.81.29.20.E2.96.B8.20x.20.3D.20h.E2.82.82.20.E2.96.B8.20.28h.E2.82.81.20.E2.96.B8.20x.29/near/411362225 wow this URL
+theorem eq_cast_trans  (h₁ : A = B) (h₂ : B = C) (x : A)
+  : h₂ ▸ h₁ ▸ x = (h₂ ▸ h₁) ▸ x
+  := by cases h₁; cases h₂; rfl
+
+theorem eq_symm_cancel {T : I -> Type _} {a b : I} (h : a = b) (x : T b)
+  : h ▸ h.symm ▸ x = x
+  := by cases h; rfl
+
+-- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
+theorem TyₛS_helper {Aₛ : Tyₛ} {a b : TyₛA Aₛ} (hA : a = b) (d : TyₛD Aₛ a)
+  : TyₛS Aₛ a d = TyₛS Aₛ b (hA ▸ d)
+  := by subst hA; rfl
 
 -- set_option pp.notation false in
-def TmₛS  : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> {γₛD : ConₛD Γₛ γₛ} -> (t : Tmₛ  Γₛ Aₛ) -> ConₛS Γₛ γₛ γₛD -> TyₛS Aₛ (TmₛA t γₛ) (TmₛD t γₛD)
+def TmₛS : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> {γₛD : ConₛD Γₛ γₛ} ->
+  (t : Tmₛ Γₛ Aₛ) -> ConₛS Γₛ γₛ γₛD -> TyₛS Aₛ (TmₛA t γₛ) (TmₛD t γₛD)
 | Γₛ, Aₛ, γₛ, γₛD, .var v, γₛS => by
-  have hA : TmₛA (Tmₛ.var v) γₛ  =            VarₛA v γₛ  := @TmₛA_var Γₛ Aₛ v γₛ
-  have hD : TmₛD (Tmₛ.var v) γₛD = hA.symm ▸ VarₛD v γₛD := by rw [TmₛD_var] -- this should work by rfl
+  have hA : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := TmₛA_var
+  rw [TyₛS_helper hA (TmₛD (Tmₛ.var v) γₛD), TmₛD_var, eq_symm_cancel hA]
+  exact VarₛS v γₛS
+| Γₛ, _, γₛ, γₛD, .app (T := T) (A := Aₛ) t u, γₛS => by
+  have hA : TmₛA (Tmₛ.app t u) γₛ = TmₛA t γₛ u := TmₛA_app
+  rw [TyₛS_helper hA, TmₛD, eq_symm_cancel hA]
+  exact TmₛS t γₛS u
 
-  -- Kyle's trick from a different thread: https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
-  have {a b : TyₛA Aₛ} (hA : a = b) (d : TyₛD Aₛ a)
-    : TyₛS Aₛ a d
-    = TyₛS Aₛ b (hA ▸ d)
-    := by subst hA; rfl
+def TyₚS : (A : Tyₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (α : TyₚA A γₛ) -> TyₚD A γₛD α -> Prop
+| El         Self, γₛS, α, αD =>                          TmₛS Self γₛS α = αD -- note the equality here!
+| PPi   T    Rest, γₛS, f, fD => (t    : T)            -> TyₚS (Rest t) γₛS (f t)    (fD t)
+| PFunc Self Rest, γₛS, f, fD => (self : TmₛA Self γₛ) ->
+  -- fD : {self : TmₛA Self γₛ} → TmₛD Self γD self → TyₚD Rest γD (f self)
+  TyₚS  Rest    γₛS (f self) (@fD self (TmₛS Self γₛS self))
 
-  rw [this hA (TmₛD (Tmₛ.var v) γₛD)]
-  rw [hD]
-  -- exact VarₛS v γₛS -- need to use eq_cast_trans here
-  sorry
-| _, _, _asdf, γD, .app (A := A) t u, γₛ => by
-  sorry
+def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (γ : ConₚA Γ γₛ) -> ConₚD Γ γₛD γ -> Prop
+| .nil     ,   _,     ⟨⟩,       ⟨⟩ => True
+| .cons A Γ, γₛS, ⟨α, γ⟩, ⟨αD, γD⟩ => TyₚS A γₛS α αD ∧ ConₚS Γ γₛS γ γD
 
-def TyₚS  : (A : Tyₚ Γₛ) -> ConₛS Γₛ γₛ γD -> (α : TyₚA A γₛ) -> TyₚD A γD α -> Type := sorry
-
-def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γD -> (γ : ConₚA Γ γₛ) -> ConₚD Γ γD γ -> Type := sorry
+example : @ConₚS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨Q, ⟨⟩⟩ (V A) ⟨f, ⟨⟩⟩ ⟨Vec.nil, Vec.cons, ⟨⟩⟩ ⟨nilD, consD, ⟨⟩⟩
+  = ((f 0 Vec.nil = nilD)
+    ∧ ((n : Nat) -> (a : A) -> (v : Vec A n) -> (f (n + 1) (Vec.cons n a v) = consD n a /- v -/ (f n v)))
+    ∧ True)
+  := rfl
