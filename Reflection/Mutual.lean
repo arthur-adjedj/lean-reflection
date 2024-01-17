@@ -259,6 +259,7 @@ for this is, again with `VarₛD` inlined:
 ᵈt (t $S α)      γcᵈ        = ᵈt t γcᵈ α
 ``` -/
 -- ! TmₛD needs casts because reduction behaviour of TmₛA is broken.
+-- And for some reason TmₚD works just fine? What...
 def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ  Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
 |  _, _, γₛ, .var v                    , γₛD => TmₛA_var.symm ▸ VarₛD v γₛD
 | Γₛ, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛA_app.symm ▸ TmₛD t γₛD u
@@ -280,7 +281,7 @@ Example:
 def TyₚD : (A : Tyₚ Γₛ) -> ConₛD Γₛ γₛ -> TyₚA A γₛ -> Type
 | El         Self, γD, self =>                                               TmₛD Self γD self
 | PPi   T    Rest, γD, f    => (t : T) ->                                    TyₚD (Rest t) γD (f t)
-| PFunc Self Rest, γD, f    => {self : TmₛA Self γₛ} -> TmₛD Self γD self -> TyₚD Rest γD (f self)
+| PFunc Self Rest, γD, f    => ⦃self : TmₛA Self γₛ⦄ -> TmₛD Self γD self -> TyₚD Rest γD (f self)
 
 inductive Vec (A : Type) : Nat -> Type
 | nil : Vec A 0
@@ -395,7 +396,134 @@ def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (γ : ConₚA
 | .cons A Γ, γₛS, ⟨α, γ⟩, ⟨αD, γD⟩ => TyₚS A γₛS α αD ∧ ConₚS Γ γₛS γ γD
 
 example : @ConₚS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨Q, ⟨⟩⟩ (V A) ⟨f, ⟨⟩⟩ ⟨Vec.nil, Vec.cons, ⟨⟩⟩ ⟨nilD, consD, ⟨⟩⟩
-  = ((f 0 Vec.nil = nilD)
+  = (f 0 Vec.nil = nilD
     ∧ ((n : Nat) -> (a : A) -> (v : Vec A n) -> (f (n + 1) (Vec.cons n a v) = consD n a /- v -/ (f n v)))
     ∧ True)
   := rfl
+
+
+-- # Substitutions
+
+/-- Represents a substitution from Δₛ to Γₛ.
+Note that `Subₛ` is essentially a list of the same length as the context `Δₛ`.
+This is because for every entry in the context Δₛ we will substitute it
+with a Γₛ-term saved in `Subₛ`, thus the resulting context will be Γₛ.  -/
+inductive Subₛ : (Γₛ : Conₛ) -> (Δₛ : Conₛ) -> Type 1
+| nil : Subₛ Γₛ .nil
+| cons : Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ -> Subₛ Γₛ (Aₛ :: Δₛ)
+
+/-- Substitutes a variable `v ∈ Δₛ` with a Γₛ-term. -/
+def SubₛVar : Varₛ Δₛ Aₛ -> Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ
+| .vz  , .cons _ t => t
+| .vs v, .cons σ _ => SubₛVar v σ
+
+/-- Applies the substitution to a term, resulting in a new term in the new context. -/
+def SubₛTm : {Aₛ : _} -> Tmₛ Δₛ Aₛ -> Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ
+| _, .var v, σ => SubₛVar v σ
+| _, .app (A := _A) t u, σ => .app (SubₛTm t σ) u
+
+def SubₛTy : Tyₚ Δₛ -> Subₛ Γₛ Δₛ -> Tyₚ Γₛ
+| El Self, σ => El (SubₛTm Self σ)
+| PPi T Rest, σ => PPi T (fun t => SubₛTy (Rest t) σ)
+| PFunc Self Rest, σ => PFunc (SubₛTm Self σ) (SubₛTy Rest σ)
+
+def SubₛCon : Conₚ Δₛ -> Subₛ Γₛ Δₛ -> Conₚ Γₛ
+| [], _ => []
+| A :: Γ, σ => SubₛTy A σ :: SubₛCon Γ σ
+
+-- def weaken {Aₛ : Tyₛ} : Subₛ Γₛ Δₛ -> Subₛ (Aₛ :: Γₛ) Δₛ
+-- | .nil => .nil
+-- | .cons t σ => .cons (.vs t) (weaken σ)
+
+def SubₛA : Subₛ Γₛ Δₛ -> ConₛA Γₛ -> ConₛA Δₛ
+| .nil     ,  _ => ⟨⟩
+| .cons σ t, γₛ => ⟨TmₛA t γₛ, SubₛA σ γₛ⟩
+
+def SubₛD : (σ : Subₛ Γₛ Δₛ) -> ConₛD Γₛ γₛ -> ConₛD Δₛ (SubₛA σ γₛ)
+| .nil, γₛD => ⟨⟩
+| .cons σ t, γₛD => ⟨TmₛD t γₛD, SubₛD σ γₛD⟩
+
+def SubₛS : (σ : Subₛ Γₛ Δₛ) -> ConₛS Γₛ γₛ γₛD -> ConₛS Δₛ (SubₛA σ γₛ) (SubₛD σ γₛD)
+| .nil, γₛD => ⟨⟩
+| .cons σ t, γₛD => ⟨TmₛS t γₛD, SubₛS σ γₛD⟩
+
+
+
+
+-- ### Now for Points...
+
+inductive Varₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type 1
+| vz :               Varₚ (Aₛ :: Γₛ) Aₛ
+| vs : Varₚ Γₛ Aₛ -> Varₚ (Bₛ :: Γₛ) Aₛ
+
+#check PPi
+
+set_option genInjectivity false in
+inductive Tmₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type 1
+| var : Varₚ Γ A -> Tmₚ Γ A
+| app {T : Type} {A : T -> Tyₚ Γₛ} : Tmₚ Γ (PPi T A)   -> (t : T)      -> Tmₚ Γ (A t)
+| appr           {A :      Tyₚ Γₛ} : Tmₚ Γ (PFunc a A) -> Tmₚ Γ (El a) -> Tmₚ Γ A
+
+/-- Represents a substitution from Δₛ to Γₛ.
+Note that `Subₛ` is essentially a list of the same length as the context `Δₛ`.
+This is because for every entry in the context Δₛ we will substitute it
+with a Γₛ-term saved in `Subₛ`, thus the resulting context will be Γₛ.  -/
+inductive Subₚ : (Γ : Conₚ Γₛ) -> (Δ : Conₚ Δₛ) -> Type 1
+| nil : Subₚ Γ .nil
+| cons : Subₚ Γ Δ -> Tmₚ Γ A -> Subₚ Γ (A :: Δ)
+
+/-- Substitutes a variable `v ∈ Δₛ` with a Γₛ-term. -/
+def SubₚVar : Varₚ Δ A -> Subₚ Γ Δ -> Tmₚ Γ A
+| .vz  , .cons _ t => t
+| .vs v, .cons σ _ => SubₚVar v σ
+
+/-- Applies the substitution to a term, resulting in a new term in the new context. -/
+def SubₚTm : {A : Tyₚ Γₛ} -> Tmₚ Δ A -> Subₚ Γ Δ -> Tmₚ Γ A
+| _, .var v, σ => SubₚVar v σ
+| _, .app (A := _A) t u, σ => .app (SubₚTm t σ) u
+| _, .appr (A := A) t u, σ => .appr (SubₚTm t σ) (SubₚTm u σ)
+
+def VarₚA : Varₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
+| .vz  , ⟨a, _⟩ => a
+| .vs v, ⟨_, γ⟩ => VarₚA v γ
+
+def TmₚA : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
+| _, .var v, γ => VarₚA v γ
+| _, .app (A := _A) t u, γ => (TmₚA t γ) u
+| _, .appr (A := _) t u, γ => (TmₚA t γ) (TmₚA u γ)
+
+def SubₚA : Subₚ Γ Δ -> ConₚA Γ γₛ -> ConₚA Δ γₛ
+| .nil     ,  _ => ⟨⟩
+| .cons σ t, γₛ => ⟨TmₚA t γₛ, SubₚA σ γₛ⟩
+
+def VarₚD : (x : Varₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (VarₚA x γ)
+| .vz  , ⟨aD, _⟩ => aD
+| .vs v, ⟨_, γD⟩ => VarₚD v γD
+
+-- This works but TmₛA_var doesn't work by rfl?
+@[simp] theorem TmₚA_var : TmₚA (Tmₚ.var v) γₛ = VarₚA v γₛ := by rfl
+
+def TmₚD : (t : Tmₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (TmₚA t γ)
+| .var v, γD => VarₚD v γD
+| .app (A := _A) t u, γD => TmₚD t γD u
+| .appr (A := A) t u, γD => TmₚD t γD (TmₚD u γD)
+
+def SubₚD : (σ : Subₚ Γ Δ) -> ConₚD Γ γₛD γ -> ConₚD Δ γₛD (SubₚA σ γ)
+| .nil, γD => ⟨⟩
+| .cons σ t, γD => ⟨TmₚD t γD, SubₚD σ γD⟩
+
+-- # Constructor
+
+variable (Ωₛ : Conₛ)
+variable (Ω : Conₚ Ωₛ)
+
+#check TyₛA U
+#reduce TyₛA U
+
+-- def conₛTm' : {Aₛ : Tyₛ} -> Tmₛ Ωₛ Aₛ -> TyₛA Aₛ
+-- | U, a => Tmₚ Ω (El a)
+-- | SPi T Aₛ, t => sorry
+
+-- def conₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
+-- | .nil => ⟨⟩
+-- | .cons σ t => ⟨conₛ' t, conₛ' σ⟩
