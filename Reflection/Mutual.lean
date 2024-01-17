@@ -10,9 +10,9 @@ set_option pp.proofs true
 -- # Syntax
 
 /-- Example for `Nat` is `U`, for `Vec` is `SPi Nat (fun n => U)`. -/
-inductive Tyₛ : Type 1
+inductive Tyₛ : Type (u+1)
 | U : Tyₛ
-| SPi : (T : Type) -> (T -> Tyₛ) -> Tyₛ
+| SPi : (T : Type u) -> (T -> Tyₛ) -> Tyₛ
 open Tyₛ
 
 inductive Conₛ
@@ -24,7 +24,7 @@ infixr:67 " :: " => Conₛ.cons
 /-- De-brujin variable referring to an entry in the context.
 A context is for example `["Even", "Odd"]`, then `.vz` refers to `"Even"`.
 These are nameless, the quotations are only to ease explanation. -/
-inductive Varₛ : Conₛ -> Tyₛ -> Type 1
+inductive Varₛ : Conₛ -> Tyₛ -> Type (u+1)
 | vz :               Varₛ (Aₛ :: Γₛ) Aₛ
 | vs : Varₛ Γₛ Aₛ -> Varₛ (_  :: Γₛ) Aₛ
 open Varₛ
@@ -32,7 +32,7 @@ open Varₛ
 set_option genInjectivity false in
 /-- `t : Tmₛ Γ A` corresponds to `Γ ⊢ t : A`.
 Original Agda: https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IF.agda#lines-25:27 -/
-inductive Tmₛ : Conₛ -> Tyₛ -> Type 1
+inductive Tmₛ : Conₛ -> Tyₛ -> Type (u+1)
 /-- A variable is a term.
 ```-
 (a : A) ∈ Γ
@@ -67,7 +67,7 @@ The only way to create a `Tyₚ` is by ending it with a `El`, which must be a te
 The only way to create a term like that is by using `Tmₛ.app` and `Tmₛ.var`.
 For example the variables are `Even` and `Odd`, i.e. the other types in the mutual block being defined,
 then `Even @ 123` is a term in universe `U`. -/
-inductive Tyₚ : Conₛ -> Type 1
+inductive Tyₚ : Conₛ -> Type (u+1)
 | El : Tmₛ Γₛ U -> Tyₚ Γₛ
 | PPi   : (T : Type) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
 /-- Allows us to introduce nested binders `(x : Self ...) -> ...`.
@@ -86,7 +86,7 @@ Example (vectors):
 ```
 V_nil :: V_cons A :: []
 ``` -/
-inductive Conₚ : Conₛ -> Type 1
+inductive Conₚ : Conₛ -> Type (u+1)
 | nil : Conₚ Γ
 | cons : Tyₚ Γ -> Conₚ Γ -> Conₚ Γ
 notation "[]" => Conₚ.nil
@@ -117,12 +117,12 @@ end Examples
 -- # Semantics
 
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`. -/
-def TyₛA : Tyₛ -> Type 1
-| U => Type
+def TyₛA.{u} : Tyₛ.{u} -> Type (u+1)
+| U => Type u
 | SPi T A => (t : T) -> TyₛA (A t)
 
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat -> Type) × Unit`. -/
-def ConₛA : Conₛ -> Type 1
+def ConₛA : Conₛ.{u} -> Type (u+1)
 | .nil => PUnit
 | .cons A Γ => TyₛA A × ConₛA Γ
 
@@ -185,7 +185,7 @@ reduces to the type of `Vec.cons` as you would expect:
 ```
 (n : Nat) -> A -> Vec n -> Vec (n + 1)
 ``` -/
-def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type
+def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type u
 | El    Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
@@ -211,8 +211,8 @@ reduces to the Lean type
 × ((n : Nat) -> A -> Vec n -> Vec (n + 1)) -- `Vec.cons`
 × Unit
 ``` -/
-def ConₚA : Conₚ Γₛ -> ConₛA Γₛ -> Type
-| .nil, _ => Unit
+def ConₚA : Conₚ.{u} Γₛ -> ConₛA Γₛ -> Type u
+| .nil, _ => PUnit
 | .cons A Γ, γₛ => TyₚA A γₛ × ConₚA Γ γₛ
 
 example {Vec : Nat -> Type} {A : Type}
@@ -225,8 +225,8 @@ example {Vec : Nat -> Type} {A : Type}
 /-- Compute motive type.
 
 Example: `TyₛD (SPi Nat (fun _ => U)) Vec` reduces to `(n : Nat) -> Vec n -> Type`. -/
-def TyₛD : (Aₛ : Tyₛ) -> TyₛA Aₛ -> Type 1
-| U, T => T -> Type
+def TyₛD : (Aₛ : Tyₛ.{u}) -> TyₛA Aₛ -> Type (u+1)
+| U, T => T -> Type u
 | SPi T Aₛ, f => (t : T) -> TyₛD (Aₛ t) (f t)
 
 /-- Compute motive type for each mutually defined inductive type.
@@ -239,7 +239,7 @@ reduces to just one motive type:
 ```
 ((t : Nat) → Vec t -> Type) × Unit
 ``` -/
-def ConₛD : (Γₛ : Conₛ) -> ConₛA Γₛ -> Type 1
+def ConₛD : (Γₛ : Conₛ.{u}) -> ConₛA Γₛ -> Type (u+1)
 | .nil, _ => PUnit
 | .cons A Γ, ⟨a, γ⟩ => TyₛD A a × ConₛD Γ γ
 
@@ -278,7 +278,7 @@ Example:
   = ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
 ``` -/
 -- Note: The `Self` here can be a little misleading, as it may be a nested type with different indices.
-def TyₚD : (A : Tyₚ Γₛ) -> ConₛD Γₛ γₛ -> TyₚA A γₛ -> Type
+def TyₚD : (A : Tyₚ.{u} Γₛ) -> ConₛD.{u} Γₛ γₛ -> TyₚA A γₛ -> Type u
 | El         Self, γD, self =>                                               TmₛD Self γD self
 | PPi   T    Rest, γD, f    => (t : T) ->                                    TyₚD (Rest t) γD (f t)
 | PFunc Self Rest, γD, f    => ⦃self : TmₛA Self γₛ⦄ -> TmₛD Self γD self -> TyₚD Rest γD (f self)
@@ -306,8 +306,8 @@ reduces to
 × ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
 × PUnit
 ``` -/
-def ConₚD : (Γ : Conₚ Γₛ) -> ConₛD Γₛ γₛ -> ConₚA Γ γₛ -> Type
-| .nil, _, _ => Unit
+def ConₚD : (Γ : Conₚ.{u} Γₛ) -> ConₛD Γₛ γₛ -> ConₚA Γ γₛ -> Type u
+| .nil, _, _ => PUnit
 | .cons A Γ, γD, ⟨a, γ⟩ => TyₚD A γD a × ConₚD Γ γD γ
 
 example {P : (n : Nat) -> Vec A n -> Type}
@@ -333,7 +333,7 @@ reduces to
 ```
 (n : Nat) -> (v : Vec A n) -> R
 ``` -/
-def TyₛS : (Aₛ : Tyₛ) -> (αₛ : TyₛA Aₛ) -> TyₛD Aₛ αₛ -> Type
+def TyₛS : (Aₛ : Tyₛ) -> (αₛ : TyₛA Aₛ) -> TyₛD Aₛ αₛ -> Type u
 | U       , T , TD  => (t : T) -> TD t
 | SPi T Aₛ, fₛ, fₛd => (t : T) -> TyₛS (Aₛ t) (fₛ t) (fₛd t)
 
@@ -348,8 +348,8 @@ reduces to
   ((n : Nat) -> (v : Vec A n) -> R)
 × PUnit
 ``` -/
-def ConₛS : (Γₛ : Conₛ) -> (γₛ : ConₛA Γₛ) -> ConₛD Γₛ γₛ -> Type
-| .nil, ⟨⟩, ⟨⟩ => Unit
+def ConₛS : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA Γₛ) -> ConₛD Γₛ γₛ -> Type u
+| .nil, ⟨⟩, ⟨⟩ => PUnit
 | .cons Aₛ Γₛ, ⟨αₛ, γₛ⟩, ⟨αₛd, γₛd⟩ => TyₛS Aₛ αₛ αₛd × ConₛS Γₛ γₛ γₛd
 
 example {A R} : ConₛS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨fun _ _ => R, ⟨⟩⟩ = (((n : Nat) -> (v : Vec A n) -> R) × Unit) := rfl
@@ -363,7 +363,7 @@ theorem eq_cast_trans  (h₁ : A = B) (h₂ : B = C) (x : A)
   : h₂ ▸ h₁ ▸ x = (h₂ ▸ h₁) ▸ x
   := by cases h₁; cases h₂; rfl
 
-theorem eq_symm_cancel {T : I -> Type _} {a b : I} (h : a = b) (x : T b)
+theorem eq_symm_cancel {T : I -> Type u} {a b : I} (h : a = b) (x : T b)
   : h ▸ h.symm ▸ x = x
   := by cases h; rfl
 
@@ -408,7 +408,7 @@ example : @ConₚS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨Q, ⟨⟩⟩ (V A) ⟨f, ⟨⟩�
 Note that `Subₛ` is essentially a list of the same length as the context `Δₛ`.
 This is because for every entry in the context Δₛ we will substitute it
 with a Γₛ-term saved in `Subₛ`, thus the resulting context will be Γₛ.  -/
-inductive Subₛ : (Γₛ : Conₛ) -> (Δₛ : Conₛ) -> Type 1
+inductive Subₛ : (Γₛ : Conₛ) -> (Δₛ : Conₛ) -> Type (u+1)
 | nil : Subₛ Γₛ .nil
 | cons : Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ -> Subₛ Γₛ (Aₛ :: Δₛ)
 
@@ -452,14 +452,14 @@ def SubₛS : (σ : Subₛ Γₛ Δₛ) -> ConₛS Γₛ γₛ γₛD -> ConₛS
 
 -- ### Now for Points...
 
-inductive Varₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type 1
+inductive Varₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type (u+1)
 | vz :               Varₚ (Aₛ :: Γₛ) Aₛ
 | vs : Varₚ Γₛ Aₛ -> Varₚ (Bₛ :: Γₛ) Aₛ
 
 #check PPi
 
 set_option genInjectivity false in
-inductive Tmₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type 1
+inductive Tmₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type (u+1)
 | var : Varₚ Γ A -> Tmₚ Γ A
 | app {T : Type} {A : T -> Tyₚ Γₛ} : Tmₚ Γ (PPi T A)   -> (t : T)      -> Tmₚ Γ (A t)
 | appr           {A :      Tyₚ Γₛ} : Tmₚ Γ (PFunc a A) -> Tmₚ Γ (El a) -> Tmₚ Γ A
@@ -468,7 +468,7 @@ inductive Tmₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type 1
 Note that `Subₛ` is essentially a list of the same length as the context `Δₛ`.
 This is because for every entry in the context Δₛ we will substitute it
 with a Γₛ-term saved in `Subₛ`, thus the resulting context will be Γₛ.  -/
-inductive Subₚ : (Γ : Conₚ Γₛ) -> (Δ : Conₚ Δₛ) -> Type 1
+inductive Subₚ : (Γ : Conₚ Γₛ) -> (Δ : Conₚ Δₛ) -> Type (u+1)
 | nil : Subₚ Γ .nil
 | cons : Subₚ Γ Δ -> Tmₚ Γ A -> Subₚ Γ (A :: Δ)
 
@@ -520,9 +520,9 @@ variable (Ω : Conₚ Ωₛ)
 #check TyₛA U
 #reduce TyₛA U
 
--- def conₛTm' : {Aₛ : Tyₛ} -> Tmₛ Ωₛ Aₛ -> TyₛA Aₛ
--- | U, a => Tmₚ Ω (El a)
--- | SPi T Aₛ, t => sorry
+def conₛTm' : {Aₛ : Tyₛ} -> Tmₛ Ωₛ Aₛ -> TyₛA Aₛ
+| U, a => Tmₚ Ω (El a)
+| SPi T Aₛ, t => sorry
 
 -- def conₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
 -- | .nil => ⟨⟩
