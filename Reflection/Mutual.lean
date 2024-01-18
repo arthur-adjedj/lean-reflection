@@ -69,7 +69,7 @@ For example the variables are `Even` and `Odd`, i.e. the other types in the mutu
 then `Even @ 123` is a term in universe `U`. -/
 inductive Tyₚ : Conₛ -> Type (u+1)
 | El : Tmₛ Γₛ U -> Tyₚ Γₛ
-| PPi   : (T : Type) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
+| PPi   : (T : Type u) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
 /-- Allows us to introduce nested binders `(x : Self ...) -> ...`.
   `PFunc` is non-dependent, because it makes no sense to have `(self : Self ...) -> Self self`.
   (...but once you have ind-ind or ind-rec, it might be sensible?) -/
@@ -459,10 +459,10 @@ inductive Varₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type (u+1)
 #check PPi
 
 set_option genInjectivity false in
-inductive Tmₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type (u+1)
+inductive Tmₚ.{u} {Γₛ : Conₛ.{u}} : Conₚ.{u} Γₛ -> Tyₚ.{u} Γₛ -> Type (u+1)
 | var : Varₚ Γ A -> Tmₚ Γ A
-| app {T : Type} {A : T -> Tyₚ Γₛ} : Tmₚ Γ (PPi T A)   -> (t : T)      -> Tmₚ Γ (A t)
-| appr           {A :      Tyₚ Γₛ} : Tmₚ Γ (PFunc a A) -> Tmₚ Γ (El a) -> Tmₚ Γ A
+| app {T : Type u} {A : T -> Tyₚ Γₛ} : Tmₚ Γ (PPi T A)   -> (t : T)      -> Tmₚ Γ (A t)
+| appr             {A :      Tyₚ Γₛ} : Tmₚ Γ (PFunc a A) -> Tmₚ Γ (El a) -> Tmₚ Γ A
 
 /-- Represents a substitution from Δₛ to Γₛ.
 Note that `Subₛ` is essentially a list of the same length as the context `Δₛ`.
