@@ -118,14 +118,14 @@ end Examples
 -- # Semantics
 
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`. -/
-def TyₛA.{u} : Tyₛ.{u} -> Type (u + 1)
-| U => Type u
+def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
+| U => Type (max u v)
 | SPi T A => (t : T) -> TyₛA (A t)
 
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat -> Type) × Unit`. -/
-def ConₛA : Conₛ.{u} -> Type (u+1)
-| .nil => PUnit
-| .cons A Γ => TyₛA A × ConₛA Γ
+def ConₛA.{u, v} : Conₛ.{u} -> Type ((max u v) + 1)
+| .nil => PUnit.{(max u v) + 2}
+| .cons A Γ => Prod.{(max u v) + 1} (TyₛA.{u, v} A) (ConₛA Γ)
 
 example : ConₛA Vₛ = ((Nat -> Type) × PUnit.{2}) := by rfl
 
@@ -186,7 +186,7 @@ reduces to the type of `Vec.cons` as you would expect:
 ```
 (n : Nat) -> A -> Vec n -> Vec (n + 1)
 ``` -/
-def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type u
+def TyₚA.{u, v} : Tyₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | El         Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
@@ -212,9 +212,9 @@ reduces to the Lean type
 × ((n : Nat) -> A -> Vec n -> Vec (n + 1)) -- `Vec.cons`
 × Unit
 ``` -/
-def ConₚA : Conₚ.{u} Γₛ -> ConₛA Γₛ -> Type u
+def ConₚA.{u, v} : Conₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | .nil, _ => PUnit
-| .cons A Γ, γₛ => TyₚA A γₛ × ConₚA Γ γₛ
+| .cons A Γ, γₛ => TyₚA.{u, v} A γₛ × ConₚA Γ γₛ
 
 example {Vec : Nat -> Type} {A : Type}
   : ConₚA (V A) ⟨Vec, ⟨⟩⟩
@@ -226,8 +226,8 @@ example {Vec : Nat -> Type} {A : Type}
 /-- Compute motive type.
 
 Example: `TyₛD (SPi Nat (fun _ => U)) Vec` reduces to `(n : Nat) -> Vec n -> Type`. -/
-def TyₛD : (Aₛ : Tyₛ.{u}) -> TyₛA Aₛ -> Type (u+1)
-| U, T => T -> Type u
+def TyₛD.{u, v} : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, v} Aₛ -> Type ((max u v) + 1)
+| U, T => T -> Type (max u v)
 | SPi T Aₛ, f => (t : T) -> TyₛD (Aₛ t) (f t)
 
 /-- Compute motive type for each mutually defined inductive type.
@@ -240,7 +240,7 @@ reduces to just one motive type:
 ```
 ((t : Nat) → Vec t -> Type) × Unit
 ``` -/
-def ConₛD : (Γₛ : Conₛ.{u}) -> ConₛA Γₛ -> Type (u+1)
+def ConₛD.{u, v} : (Γₛ : Conₛ.{u}) -> ConₛA.{u, v} Γₛ -> Type ((max u v) + 1)
 | .nil, _ => PUnit
 | .cons A Γ, ⟨a, γ⟩ => TyₛD A a × ConₛD Γ γ
 
@@ -279,7 +279,7 @@ Example:
   = ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
 ``` -/
 -- Note: The `Self` here can be a little misleading, as it may be a nested type with different indices.
-def TyₚD : (A : Tyₚ.{u} Γₛ) -> ConₛD.{u} Γₛ γₛ -> TyₚA A γₛ -> Type u
+def TyₚD.{u, v} : (A : Tyₚ.{u} Γₛ) -> ConₛD.{u} Γₛ γₛ -> TyₚA.{u, v} A γₛ -> Type (max u v)
 | El         Self, γD, self =>                                               TmₛD Self γD self
 | PPi   T    Rest, γD, f    => (t : T) ->                                    TyₚD (Rest t) γD (f t)
 | PFunc Self Rest, γD, f    => ⦃self : TmₛA Self γₛ⦄ -> TmₛD Self γD self -> TyₚD Rest γD (f self)
@@ -307,7 +307,7 @@ reduces to
 × ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
 × PUnit
 ``` -/
-def ConₚD : (Γ : Conₚ.{u} Γₛ) -> ConₛD Γₛ γₛ -> ConₚA Γ γₛ -> Type u
+def ConₚD.{u, v} : (Γ : Conₚ.{u} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> ConₚA.{u, v} Γ γₛ -> Type (max u v)
 | .nil, _, _ => PUnit
 | .cons A Γ, γD, ⟨a, γ⟩ => TyₚD A γD a × ConₚD Γ γD γ
 
@@ -335,7 +335,7 @@ reduces to
 ```
 (n : Nat) -> (v : Vec A n) -> R
 ``` -/
-def TyₛS : (Aₛ : Tyₛ) -> (αₛ : TyₛA Aₛ) -> TyₛD Aₛ αₛ -> Type u
+def TyₛS.{u, v} : (Aₛ : Tyₛ.{u}) -> (αₛ : TyₛA.{u, v} Aₛ) -> TyₛD.{u, v} Aₛ αₛ -> Type (max u v)
 | U       , T , TD  => (t : T) -> TD t
 | SPi T Aₛ, fₛ, fₛd => (t : T) -> TyₛS (Aₛ t) (fₛ t) (fₛd t)
 
@@ -350,7 +350,7 @@ reduces to
   ((n : Nat) -> (v : Vec A n) -> R)
 × PUnit
 ``` -/
-def ConₛS : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA Γₛ) -> ConₛD Γₛ γₛ -> Type u
+def ConₛS.{u, v} : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA.{u, v} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> Type (max u v)
 | .nil, ⟨⟩, ⟨⟩ => PUnit
 | .cons Aₛ Γₛ, ⟨αₛ, γₛ⟩, ⟨αₛd, γₛd⟩ => TyₛS Aₛ αₛ αₛd × ConₛS Γₛ γₛ γₛd
 
@@ -520,32 +520,18 @@ def SubₚD : (σ : Subₚ Γ Δ) -> ConₚD Γ γₛD γ -> ConₚD Δ γₛD (
 -- universe u
 -- variable (Ωₛ : Conₛ.{u+1})
 -- variable (Ω : Conₚ.{u+1} Ωₛ)
--- variable (Ωₛ : Conₛ.{0})
--- variable (Ω : Conₚ.{0} Ωₛ)
+variable (Ωₛ : Conₛ.{0})
+variable (Ω : Conₚ.{0} Ωₛ)
 
 #check TyₛA U
-#reduce TyₛA.{1} U
-
-#check Tmₚ
-#check ULift
-
-structure UULift.{r, s} (α : Type s) : Type (max s r) where
-  up ::
-  down : α
-
-
-def foo.{u} : Type (u + 1) := Type u
-example : Type (u + 1) := Type u
-example : Type (max (u + 1)) := Type u
-example : Type (max (u + 1) (v + 1)) := Type u
-example : Type ((max u v) + 1) := Type v
+#reduce TyₛA.{0, 0} U
 
 /-
   conSᵃ' : ∀{B}(t : TmS Ωc B) → _ᵃS {lsuc lzero} B
   conSᵃ' {U}      t     = TmP Ω (El t)
   conSᵃ' {Π̂S T B} t     = λ τ → conSᵃ' (t $S τ)
 -/
-def conₛTm' {Ωₛ : Conₛ.{0}} {Ω : Conₚ.{0} Ωₛ} : {Aₛ : Tyₛ.{0}} -> Tmₛ.{0} Ωₛ Aₛ -> TyₛA.{1} Aₛ
+def conₛTm' : {Aₛ : Tyₛ.{0}} -> Tmₛ.{0} Ωₛ Aₛ -> TyₛA.{0, 1} Aₛ
 | U, t => @Tmₚ.{0} Ωₛ Ω (@El Ωₛ t)
 | SPi T Aₛ, t => fun u => conₛTm' (.app t u)
 
