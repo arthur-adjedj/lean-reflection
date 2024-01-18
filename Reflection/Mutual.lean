@@ -6,6 +6,7 @@ import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 -/
 
 set_option pp.proofs true
+set_option pp.universes true
 
 -- # Syntax
 
@@ -32,7 +33,7 @@ open Varₛ
 set_option genInjectivity false in
 /-- `t : Tmₛ Γ A` corresponds to `Γ ⊢ t : A`.
 Original Agda: https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IF.agda#lines-25:27 -/
-inductive Tmₛ : Conₛ -> Tyₛ -> Type (u+1)
+inductive Tmₛ.{u} : Conₛ.{u} -> Tyₛ.{u} -> Type (u+1)
 /-- A variable is a term.
 ```-
 (a : A) ∈ Γ
@@ -117,7 +118,7 @@ end Examples
 -- # Semantics
 
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`. -/
-def TyₛA.{u} : Tyₛ.{u} -> Type (u+1)
+def TyₛA.{u} : Tyₛ.{u} -> Type (u + 1)
 | U => Type u
 | SPi T A => (t : T) -> TyₛA (A t)
 
@@ -168,7 +169,7 @@ _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
 ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
 ```
 -/
-def TmₛA : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
+def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA.{u} Aₛ
 | Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
 | Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
 
@@ -186,7 +187,7 @@ reduces to the type of `Vec.cons` as you would expect:
 (n : Nat) -> A -> Vec n -> Vec (n + 1)
 ``` -/
 def TyₚA : Tyₚ Γₛ -> ConₛA Γₛ -> Type u
-| El    Self, γₛ => TmₛA Self γₛ
+| El         Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
 
@@ -319,9 +320,10 @@ example {P : (n : Nat) -> Vec A n -> Type}
     )
   := rfl
 
+#check Vec
+#check Vec.rec
 
-
-
+#check Nat.rec
 
 -- ## Sections
 
@@ -487,7 +489,7 @@ def VarₚA : Varₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
 | .vz  , ⟨a, _⟩ => a
 | .vs v, ⟨_, γ⟩ => VarₚA v γ
 
-def TmₚA : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
+def TmₚA.{u} : {A : Tyₚ Γₛ} -> Tmₚ.{u} Γ A -> ConₚA.{u} Γ γₛ -> TyₚA.{u} A γₛ
 | _, .var v, γ => VarₚA v γ
 | _, .app (A := _A) t u, γ => (TmₚA t γ) u
 | _, .appr (A := _) t u, γ => (TmₚA t γ) (TmₚA u γ)
@@ -508,22 +510,47 @@ def TmₚD : (t : Tmₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (TmₚA
 | .app (A := _A) t u, γD => TmₚD t γD u
 | .appr (A := A) t u, γD => TmₚD t γD (TmₚD u γD)
 
+
 def SubₚD : (σ : Subₚ Γ Δ) -> ConₚD Γ γₛD γ -> ConₚD Δ γₛD (SubₚA σ γ)
 | .nil, γD => ⟨⟩
 | .cons σ t, γD => ⟨TmₚD t γD, SubₚD σ γD⟩
 
 -- # Constructor
 
-variable (Ωₛ : Conₛ)
-variable (Ω : Conₚ Ωₛ)
+-- universe u
+-- variable (Ωₛ : Conₛ.{u+1})
+-- variable (Ω : Conₚ.{u+1} Ωₛ)
+-- variable (Ωₛ : Conₛ.{0})
+-- variable (Ω : Conₚ.{0} Ωₛ)
 
 #check TyₛA U
-#reduce TyₛA U
+#reduce TyₛA.{1} U
 
-def conₛTm' : {Aₛ : Tyₛ} -> Tmₛ Ωₛ Aₛ -> TyₛA Aₛ
-| U, a => Tmₚ Ω (El a)
-| SPi T Aₛ, t => sorry
+#check Tmₚ
+#check ULift
+
+structure UULift.{r, s} (α : Type s) : Type (max s r) where
+  up ::
+  down : α
+
+
+def foo.{u} : Type (u + 1) := Type u
+example : Type (u + 1) := Type u
+example : Type (max (u + 1)) := Type u
+example : Type (max (u + 1) (v + 1)) := Type u
+example : Type ((max u v) + 1) := Type v
+
+/-
+  conSᵃ' : ∀{B}(t : TmS Ωc B) → _ᵃS {lsuc lzero} B
+  conSᵃ' {U}      t     = TmP Ω (El t)
+  conSᵃ' {Π̂S T B} t     = λ τ → conSᵃ' (t $S τ)
+-/
+def conₛTm' {Ωₛ : Conₛ.{0}} {Ω : Conₚ.{0} Ωₛ} : {Aₛ : Tyₛ.{0}} -> Tmₛ.{0} Ωₛ Aₛ -> TyₛA.{1} Aₛ
+| U, t => @Tmₚ.{0} Ωₛ Ω (@El Ωₛ t)
+| SPi T Aₛ, t => fun u => conₛTm' (.app t u)
 
 -- def conₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
 -- | .nil => ⟨⟩
 -- | .cons σ t => ⟨conₛ' t, conₛ' σ⟩
+
+-- # Eliminator
