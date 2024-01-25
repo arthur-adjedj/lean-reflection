@@ -1,11 +1,15 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 
 /-
-  Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
-  Agda source for the above lives at https://bitbucket.org/javra/inductive-families
+  Example from section 7.1 of http://von-raumer.de/academic/phd_vonraumer.pdf .
+  Note: Non-dependent eliminator.
 -/
 
 set_option pp.proofs true
+set_option linter.unusedVariables false
+
+theorem eq_symm_cancel {T : I -> Type _} {a b : I} (h : a = b) (x : T b) : h ▸ h.symm ▸ x = x
+  := by cases h; rfl
 
 -- # Syntax
 
@@ -18,23 +22,6 @@ mutual
   inductive EConₛ
   | nil : EConₛ
   | ext : EConₛ -> ETyₛ -> EConₛ
-
-  -- inductive EVarₛ : Type 1
-  -- | vz :          EVarₛ
-  -- | vs : EVarₛ -> EVarₛ
-
-  -- inductive ETmₛ : Type 1
-  -- | var : EVarₛ -> ETmₛ
-  -- | app {T : Type} : ETmₛ -> (arg : T) -> ETmₛ
-
-  -- inductive ETyₚ : Type 1
-  -- | El  : ETmₛ -> ETyₚ
-  -- | Pi  : (T : Type) -> (T -> ETyₚ) -> ETyₚ
-  -- | Pi' : ETmₛ ->       ETyₚ -> ETyₚ
-
-  -- inductive EConₚ : Type 1
-  -- | nil : EConₚ
-  -- | ext : ETyₚ -> EConₚ -> EConₚ
 end
 
 mutual
@@ -67,7 +54,10 @@ def Piₛ (Γₛ : Conₛ) (A : Tyₛ Γₛ) (B : Tyₛ (extₛ Γₛ A)) : Ty�
 -- | .nilₛ => n
 -- | .extₛ Γₛ Aₛ => e ...
 
-variable {C : Type} {T : C -> Type}
+-- Dependent eliminator would have needed the following:
+-- variable {C : Conₛ -> Type _} {T : {Γ : Conₛ} -> C Γ -> Tyₛ -> Type _}
+
+variable {C : Type _} {T : C -> Type _}
 variable (n : C)
 variable (e : (γ : C) -> T γ -> C)
 variable (u : (γ : C) -> T γ)
@@ -159,9 +149,6 @@ theorem recTy_U : recTy n e u p (U Γₛ) = u (recCon n e u p Γₛ) := by
   let r_rhs := RTyₛ.U rhs_γ.snd
   let eq := RTyₛ_right_unique n e u p lhs.snd r_rhs
   exact eq
-
-theorem eq_symm_cancel {T : I -> Type _} {a b : I} (h : a = b) (x : T b) : h ▸ h.symm ▸ x = x
-  := by cases h; rfl
 
 theorem recTy_Pi
   : recTy n e u p (Piₛ Γₛ Aₛ Bₛ)
@@ -259,8 +246,6 @@ theorem recTy_Pi
 
   exact RTyₛ_right_unique n e u p lhs.snd (.Pi γ.snd a.snd b.snd)
 
--- @[match_pattern]
-
 def f : Conₛ -> Nat
   := recCon (C := Nat)
     0 -- n
@@ -274,7 +259,30 @@ def mk_large : Nat -> Conₛ
 | 0 => nilₛ
 | .succ n => extₛ (mk_large n) (U (mk_large n))
 
-#reduce mk_large 10
+-- #reduce f (mk_large 6)
+-- #eval f (mk_large 6000)
 
-#reduce f (mk_large 6)
-#eval f (mk_large 6000)
+def ConₛA : Conₛ -> Type 1 :=
+  recCon (C := Type 1) (T := fun γ => Type 1)
+    PUnit
+    (fun (γ : Type 1) (a : Type 1) => a × γ)
+    (fun γ => Type)
+    (fun γ a b => (t : a) -> b)
+
+/-- Nat : Type -/
+def Nₛ : Conₛ := extₛ nilₛ (U nilₛ)
+/-- Vec : Nat -> Type -/
+def Vₛ : Conₛ := extₛ nilₛ (Piₛ nilₛ (U nilₛ) (U (extₛ nilₛ (U nilₛ))))
+
+#reduce ConₛA Nₛ
+#reduce ConₛA Vₛ
+
+def TyₛA : Tyₛ Γₛ -> Type 1 :=
+  recTy (C := Type 1) (T := fun γ => Type 1)
+    PUnit
+    (fun (γ : Type 1) (a : Type 1) => a × γ)
+    (fun γ => Type)
+    (fun γ a b => (t : a) -> b)
+
+#reduce TyₛA (U nilₛ)
+#reduce TyₛA (Piₛ nilₛ (U nilₛ) (U (extₛ nilₛ (U nilₛ))))
