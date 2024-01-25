@@ -1,4 +1,5 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
+import Reflection.Util.EqHelpers
 
 /-
   Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
@@ -6,7 +7,6 @@ import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 -/
 
 set_option pp.proofs true
-set_option pp.universes true
 
 -- # Syntax
 
@@ -27,7 +27,7 @@ A context is for example `["Even", "Odd"]`, then `.vz` refers to `"Even"`.
 These are nameless, the quotations are only to ease explanation. -/
 inductive Varₛ : Conₛ -> Tyₛ -> Type (u+1)
 | vz :               Varₛ (Aₛ :: Γₛ) Aₛ
-| vs : Varₛ Γₛ Aₛ -> Varₛ (_  :: Γₛ) Aₛ
+| vs : Varₛ Γₛ Aₛ -> Varₛ (Bₛ :: Γₛ) Aₛ
 open Varₛ
 
 set_option genInjectivity false in
@@ -320,10 +320,7 @@ example {P : (n : Nat) -> Vec A n -> Type}
     )
   := rfl
 
-#check Vec
-#check Vec.rec
 
-#check Nat.rec
 
 -- ## Sections
 
@@ -360,21 +357,11 @@ def VarₛS : (x : Varₛ Γₛ Aₛ) -> ConₛS Γₛ γₛ γD -> TyₛS Aₛ 
 | .vz  , ⟨αₛS, γₛS⟩ => αₛS
 | .vs v, ⟨ _, γₛS⟩ => VarₛS v γₛS
 
--- https://leanprover.zulipchat.com/#narrow/stream/217875-Is-there-code-for-X.3F/topic/.28h.E2.82.82.20.E2.96.B8.20h.E2.82.81.29.20.E2.96.B8.20x.20.3D.20h.E2.82.82.20.E2.96.B8.20.28h.E2.82.81.20.E2.96.B8.20x.29/near/411362225 wow this URL
-theorem eq_cast_trans  (h₁ : A = B) (h₂ : B = C) (x : A)
-  : h₂ ▸ h₁ ▸ x = (h₂ ▸ h₁) ▸ x
-  := by cases h₁; cases h₂; rfl
-
-theorem eq_symm_cancel {T : I -> Type u} {a b : I} (h : a = b) (x : T b)
-  : h ▸ h.symm ▸ x = x
-  := by cases h; rfl
-
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
 theorem TyₛS_helper {Aₛ : Tyₛ} {a b : TyₛA Aₛ} (hA : a = b) (d : TyₛD Aₛ a)
   : TyₛS Aₛ a d = TyₛS Aₛ b (hA ▸ d)
   := by subst hA; rfl
 
--- set_option pp.notation false in
 def TmₛS : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> {γₛD : ConₛD Γₛ γₛ} ->
   (t : Tmₛ Γₛ Aₛ) -> ConₛS Γₛ γₛ γₛD -> TyₛS Aₛ (TmₛA t γₛ) (TmₛD t γₛD)
 | Γₛ, Aₛ, γₛ, γₛD, .var v, γₛS => by
@@ -433,9 +420,56 @@ def SubₛCon : Conₚ Δₛ -> Subₛ Γₛ Δₛ -> Conₚ Γₛ
 | [], _ => []
 | A :: Γ, σ => SubₛTy A σ :: SubₛCon Γ σ
 
--- def weaken {Aₛ : Tyₛ} : Subₛ Γₛ Δₛ -> Subₛ (Aₛ :: Γₛ) Δₛ
--- | .nil => .nil
--- | .cons t σ => .cons (.vs t) (weaken σ)
+/-- Increment all de brujin indices in this term by one. -/
+def vshift : {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> Tmₛ (Bₛ :: Γₛ) Aₛ
+| _, .var v => .var (.vs v)
+| _, .app (A := _A) t u => .app (vshift t) u
+
+/-- Weakens a substitution.
+  Given a substitution `σ` which replaces all variables `Δₛ ⊢ v` with terms `Γₛ ⊢ t`,
+  the weakened substitution will replace all variables `Δₛ ⊢ v` with terms `Γₛ, Aₛ ⊢ t`.
+  The stored terms thus need to be shifted using `vshift`. -/
+def weaken.{u} : {Γₛ Δₛ : Conₛ.{u}} -> {Aₛ : Tyₛ.{u}} -> Subₛ.{u} Γₛ Δₛ -> Subₛ (Aₛ :: Γₛ) Δₛ
+| Γₛ, .nil    , Aₛ, .nil => .nil
+| Γₛ, Bₛ :: Δₛ, Aₛ, .cons σ t => Subₛ.cons (weaken σ) (vshift t)
+
+/-- Identity substitution. Does nothing (replaces all variables by itself). -/
+def Subₛ.id : (Γₛ : Conₛ) -> Subₛ Γₛ Γₛ
+| .nil => .nil
+| .cons _ Γₛ => .cons (weaken (Subₛ.id Γₛ)) (.var .vz)
+
+theorem aux : @Eq (Tmₛ (Bₛ :: Γₛ) Aₛ) (vshift (SubₛVar v (Subₛ.id Γₛ))) (SubₛVar v (weaken (Subₛ.id Γₛ))) := by
+  induction v generalizing Bₛ with
+  | vz => simp [vshift, SubₛVar, weaken, Subₛ.id]
+  | @vs Γₛ Aₛ' Cₛ v ih =>
+    have h : @Eq (Tmₛ (Bₛ :: Cₛ :: Γₛ) Aₛ')
+      (vshift <| SubₛVar v <| weaken <| Subₛ.id Γₛ)
+      (vshift <| vshift <| SubₛVar v <| Subₛ.id Γₛ)
+      := congrArg vshift ih.symm
+    simp only [SubₛVar]
+    simp only [Subₛ.id, weaken, vshift, SubₛVar]
+    rw [h]
+    -- simp [<- ih]
+    -- rw [ih] at h
+    sorry
+
+theorem SubₛVar_id : (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) = Tmₛ.var v := fun v => by
+  induction v with
+  | vz => rw [Subₛ.id]; rfl
+  | @vs Γₛ Aₛ Bₛ v ih =>
+    rw [Subₛ.id]
+    rw [SubₛVar]
+    have ih : @Eq (Tmₛ (Bₛ :: Γₛ) Aₛ)
+      (vshift (SubₛVar v (Subₛ.id Γₛ)))
+      (vshift (Tmₛ.var v))
+      := congrArg vshift ih
+    simp [vshift] at ih
+    rw [<- aux]
+    exact ih
+
+theorem SubₛTm_id : (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
+| .var v => SubₛVar_id v
+| .app (A := Aₛ) t u => sorry
 
 def SubₛA : Subₛ Γₛ Δₛ -> ConₛA Γₛ -> ConₛA Δₛ
 | .nil     ,  _ => ⟨⟩
@@ -450,15 +484,11 @@ def SubₛS : (σ : Subₛ Γₛ Δₛ) -> ConₛS Γₛ γₛ γₛD -> ConₛS
 | .cons σ t, γₛD => ⟨TmₛS t γₛD, SubₛS σ γₛD⟩
 
 
-
-
--- ### Now for Points...
+-- ## Now for Points...
 
 inductive Varₚ : Conₚ Γₛ -> Tyₚ Γₛ -> Type (u+1)
 | vz :               Varₚ (Aₛ :: Γₛ) Aₛ
 | vs : Varₚ Γₛ Aₛ -> Varₚ (Bₛ :: Γₛ) Aₛ
-
-#check PPi
 
 set_option genInjectivity false in
 inductive Tmₚ.{u} {Γₛ : Conₛ.{u}} : Conₚ.{u} Γₛ -> Tyₚ.{u} Γₛ -> Type (u+1)
@@ -485,6 +515,22 @@ def SubₚTm : {A : Tyₚ Γₛ} -> Tmₚ Δ A -> Subₚ Γ Δ -> Tmₚ Γ A
 | _, .app (A := _A) t u, σ => .app (SubₚTm t σ) u
 | _, .appr (A := A) t u, σ => .appr (SubₚTm t σ) (SubₚTm u σ)
 
+def vsₚ : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> Tmₚ (B :: Γ) A
+| _, .var v => .var (.vs v)
+| _, .app (A := _A) t u => .app (vsₚ t) u
+| _, .appr (A := _A) t u => .appr (vsₚ t) (vsₚ u)
+
+def weakenₚ.{u} : {Γ Δ : Conₚ.{u} Γₛ} -> {A : Tyₚ.{u} Γₛ} -> Subₚ.{u} Γ Δ -> Subₚ (A :: Γ) Δ
+| _, .nil  , _, .nil => .nil
+| _, _ :: _, _, .cons σ t => Subₚ.cons (weakenₚ σ) (vsₚ t)
+
+def Subₚ.id : (Γ : Conₚ Γₛ) -> Subₚ Γ Γ
+| .nil => .nil
+| .cons _ Γ => .cons (weakenₚ (Subₚ.id Γ)) (.var .vz)
+
+theorem SubₚTm_id (t : Tmₚ Γ A) : SubₚTm t (Subₚ.id Γ) = t := sorry
+
+
 def VarₚA : Varₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
 | .vz  , ⟨a, _⟩ => a
 | .vs v, ⟨_, γ⟩ => VarₚA v γ
@@ -503,40 +549,173 @@ def VarₚD : (x : Varₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (Var�
 | .vs v, ⟨_, γD⟩ => VarₚD v γD
 
 -- This works but TmₛA_var doesn't work by rfl?
-@[simp] theorem TmₚA_var : TmₚA (Tmₚ.var v) γₛ = VarₚA v γₛ := by rfl
+theorem TmₚA_var : TmₚA (Tmₚ.var v) γₛ = VarₚA v γₛ := by rfl
 
 def TmₚD : (t : Tmₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (TmₚA t γ)
 | .var v, γD => VarₚD v γD
 | .app (A := _A) t u, γD => TmₚD t γD u
 | .appr (A := A) t u, γD => TmₚD t γD (TmₚD u γD)
 
-
 def SubₚD : (σ : Subₚ Γ Δ) -> ConₚD Γ γₛD γ -> ConₚD Δ γₛD (SubₚA σ γ)
 | .nil, γD => ⟨⟩
 | .cons σ t, γD => ⟨TmₚD t γD, SubₚD σ γD⟩
 
--- # Constructor
 
--- universe u
--- variable (Ωₛ : Conₛ.{u+1})
--- variable (Ω : Conₚ.{u+1} Ωₛ)
-variable (Ωₛ : Conₛ.{0})
-variable (Ω : Conₚ.{0} Ωₛ)
+-- # Sort and Points Constructors
 
-#check TyₛA U
-#reduce TyₛA.{0, 0} U
+-- The paper assumes `u := 0` but we generalize a little.
+universe u
+variable {Ωₛ : Conₛ.{u}}
+variable {Ω : Conₚ.{u} Ωₛ}
 
-/-
-  conSᵃ' : ∀{B}(t : TmS Ωc B) → _ᵃS {lsuc lzero} B
-  conSᵃ' {U}      t     = TmP Ω (El t)
-  conSᵃ' {Π̂S T B} t     = λ τ → conSᵃ' (t $S τ)
+/-- This is a lambda telescope which eventually produces a type for the point terms term Ω⊢t.
+  Then later constrTmₚ will produce the actual terms which inhabit this type.
+  We will soon prove *coherence* of this, which will "pull back" any meaning about the syntactic terms and types
+  to meaning about the actual Lean terms and types.
+
+Example.
+Try not to get confused by `V String`, just imagine it's one identifier.
+```
+constrTmₛ' (Ω := V String) (Ωₛ := Vₛ) (Aₛ := (SPi Nat (fun _ => U))) (.var .vz)
+```
+reduces to
+```
+fun (n : Nat) => Tmₚ (V String) (El ((.var .vz) @ n))    :   Nat -> Type
+```
+which is a stand-in for `Vec String : Nat -> Type`.
+We do not have an actual `Vec String`, so instead we use `constrTmₛ (V String)`
 -/
-def conₛTm' : {Aₛ : Tyₛ.{0}} -> Tmₛ.{0} Ωₛ Aₛ -> TyₛA.{0, 1} Aₛ
-| U, t => @Tmₚ.{0} Ωₛ Ω (@El Ωₛ t)
-| SPi T Aₛ, t => fun u => conₛTm' (.app t u)
+def constrTmₛ' : {Aₛ : Tyₛ.{u}} -> Tmₛ.{u} Ωₛ Aₛ -> TyₛA.{u, u + 1} Aₛ -- baked-in ULift into TyₛA
+| U      , t => Tmₚ Ω (El t)
+| SPi _ _, t => fun u => constrTmₛ' (.app t u)
 
--- def conₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
--- | .nil => ⟨⟩
--- | .cons σ t => ⟨conₛ' t, conₛ' σ⟩
+#reduce TyₛA U
+example : TyₛA.{0, 1} U := constrTmₛ' (Ω := V String) (Ωₛ := Vₛ) ((.var .vz) @ 123)
+#reduce TyₛA (SPi Nat (fun _ => U))
+example : TyₛA (SPi Nat (fun _ => U)) := constrTmₛ' (Ω := V String) (Ωₛ := Vₛ) (.var .vz)
+
+example : constrTmₛ' (Ω := V String) (Ωₛ := Vₛ) (Aₛ := (SPi Nat (fun _ => U))) (.var .vz)
+  = fun (n : Nat) => Tmₚ (V String) (El ((.var .vz) @ n))
+  := rfl
+
+def constrₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
+| .nil => ⟨⟩
+| .cons σ t => ⟨constrTmₛ' (Ω := Ω) t, constrₛ' σ⟩
+
+def constrₛ : ConₛA Ωₛ := constrₛ' (Ω := Ω) (Subₛ.id Ωₛ)
+
+example : constrₛ (Ωₛ := Vₛ) (Ω := V String)
+  = ⟨fun u => Tmₚ (V String) (El ((Tmₛ.var .vz) @ u)), ⟨⟩⟩
+  := rfl
+
+-- Lemma 16
+theorem constrₛ_coherent (t : Tmₛ Γₛ Aₛ) (σ : Subₛ Ωₛ Γₛ) : TmₛA t (@constrₛ' Ωₛ Ω Γₛ σ) = @constrTmₛ' Ωₛ Ω _ (SubₛTm t σ) := by
+  induction σ with
+  | nil => sorry
+  | cons σ u ih_σ =>
+    induction t with
+    | var v =>
+      cases v with
+      | vz =>
+        rw [TmₛA]
+        rw [constrₛ']
+        rw [VarₛA]
+        rfl
+      | vs v =>
+        rw [TmₛA]
+        rw [constrₛ']
+        rw [VarₛA]
+        -- rw [constrTmₛ']
+        -- rw [ih_σ]
+        sorry
+        done
+    | app f u ihₜ =>
+      rw [TmₛA]
+      rw [SubₛTm]
+      -- rw [ihₜ (f)]
+      -- rw [constrTmₛ']
+      sorry
+      done
+
+-- same as the above
+example (t : Tmₛ Γₛ Aₛ) : (TmₛA t) ∘ (@constrₛ' Ωₛ Ω Γₛ) = (@constrTmₛ' Ωₛ Ω _) ∘ (SubₛTm t)
+  := funext <| constrₛ_coherent t
+
+example
+  : @TyₚA Vₛ (PPi Nat fun n => @El Vₛ ((.var vz) @ n)) (@constrₛ Vₛ (V String))
+  -- = ((n : Nat) -> (fun n => Tmₚ (V String) (El ((.var .vz) @ n))) n) -- intermediate step
+  = ((n : Nat) -> Tmₚ (V String) (El ((.var .vz) @ n)))
+  := rfl
+example --       vvvvvvvvvvvvvvvvvv "Self"
+  : @TyₚA Vₛ (El ((.var vz) @ 123)) (@constrₛ Vₛ (V String))
+  = Tmₚ (V String) (El ((.var .vz) @ 123))
+  := rfl
+
+def constrTmₚ' : {A : Tyₚ _} -> Tmₚ Ω A -> TyₚA A (constrₛ (Ω := Ω))
+| El Self, t => by
+  -- this is actually `⊢ Tmₚ Ω (El Self)` but lean isn't smart enough
+  rw [TyₚA]
+  rw [constrₛ]
+  rw [constrₛ_coherent Self]
+  rw [SubₛTm_id]
+  exact t
+| PPi T A, t => fun τ => constrTmₚ' (.app t τ)
+| PFunc Self A, t =>
+  fun u =>
+    let u : Tmₚ Ω (El Self) := by
+      rw [constrₛ] at u
+      rw [constrₛ_coherent Self] at u
+      rw [SubₛTm_id] at u
+      exact u
+    constrTmₚ' (.appr t u)
+
+def constrₚ' : Subₚ Ω Γ -> ConₚA Γ (constrₛ (Ω := Ω))
+| .nil => ⟨⟩
+| .cons σ t => ⟨constrTmₚ' (Ω := Ω) t, constrₚ' σ⟩
+
+def constrₚ := constrₚ' (Subₚ.id Ω)
+
+theorem constrₚ_coherent (ttt : Tmₚ Γ A) (σ : Subₚ Ω Γ) : TmₚA ttt (@constrₚ' Ωₛ Ω Γ σ) = @constrTmₚ' Ωₛ Ω _ (SubₚTm ttt σ) := by
+  sorry
+
 
 -- # Eliminator
+
+variable (ωₛD : ConₛD Ωₛ constrₛ) (ωₛ : ConₚD Ω ωₛD constrₚ)
+
+def elimTmₛ' : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, u+1} Aₛ (TmₛA t (constrₛ (Ω:=Ω))) (TmₛD t ωₛD)
+| U, a =>
+  -- a : Tmₛ Ωₛ U
+  -- ⊢ TyₛS U (TmₛA a constrₛ) (TmₛD a ωₛD)
+  -- have (t : TmₛA a (constrₛ (Ω:=Ω))) : TyₛS U (TmₛD a ωₛD t) = TmₛD a ωₛD t := sorry
+
+  fun (t : TmₛA a constrₛ) => by
+    -- ⊢ TmₛD a ωₛD t
+    -- let ret := TmₛD t ωₛD
+    sorry
+| SPi T Aₛ, t =>
+  fun τ => by
+    let res := elimTmₛ' (.app t τ)
+    -- why is this so ass
+    rw [TyₛS_helper TmₛA_app] at res
+    rw [TmₛD_app] at res
+    simp only [eq_symm_cancel, eq_cast_trans] at res
+    exact res
+
+def elimₛ' : (σ : Subₛ Ωₛ Γₛ) -> ConₛS Γₛ (SubₛA σ constrₛ) (SubₛD σ ωₛD)
+| .nil => ⟨⟩
+| .cons σ t => ⟨elimTmₛ' (Ω := Ω) ωₛD t, elimₛ' σ⟩
+
+
+
+
+
+
+namespace Example
+  def Vec (A : Type) : Nat -> Type 1                                     := constrTmₛ' (Ω := V A) (.var .vz)
+  def Vec.nil (A : Type) : Vec A 0                                       := constrTmₚ' (Ω := V A) (.var .vz)
+  def Vec.cons (A : Type) : (n : Nat) -> (x:A) -> Vec A n -> Vec A (n+1) := constrTmₚ' (Ω := V A) (.var (.vs .vz))
+  -- def Vec.rec := elimₛ
+  -- theorem Vec.rec.nil := elimₚ
+  -- theorem Vec.rec.cons := elimₚ
+end Example
