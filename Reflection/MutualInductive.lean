@@ -126,9 +126,9 @@ def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat -> Type) × Unit`. -/
 def ConₛA.{u, v} : Conₛ.{u} -> Type ((max u v) + 1)
 | .nil => PUnit.{(max u v) + 2}
-| .ext Γ A => Prod.{(max u v) + 1} (TyₛA.{u, v} A) (ConₛA Γ)
+| .ext Γ A => Prod.{(max u v) + 1} (ConₛA Γ) (TyₛA.{u, v} A)
 
-example : ConₛA Vₛ = ((Nat -> Type) × PUnit.{2}) := by rfl
+example : ConₛA Vₛ = (PUnit.{2} × (Nat -> Type)) := by rfl
 
 /--
   Variable lookup. Given a context `Γₛ` and an interpretation `γₛ` for that context,
@@ -141,8 +141,8 @@ example : ConₛA Vₛ = ((Nat -> Type) × PUnit.{2}) := by rfl
   This function returns an actual (unquoted) Lean type, e.g. `Vec`.
 -/
 def VarₛA : Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
-| vz  , ⟨a, _ ⟩ => a
-| vs v, ⟨_, γₛ⟩ => VarₛA v γₛ
+| vz  , ⟨_, a⟩ => a
+| vs v, ⟨γₛ, _⟩ => VarₛA v γₛ
 
 /-- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
@@ -177,11 +177,11 @@ def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> C
 @[simp] theorem TmₛA_var  : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rw [TmₛA]
 @[simp] theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
 
-example {Vec : Nat -> Type} : @TmₛA (⬝ ▹ SPi Nat (fun _ => U)) U (.app (.var .vz) 123) ⟨Vec, ⟨⟩⟩ = Vec 123 := rfl
+example {Vec : Nat -> Type} : @TmₛA (⬝ ▹ SPi Nat (fun _ => U)) U (.app (.var .vz) 123) ⟨⟨⟩, Vec⟩ = Vec 123 := rfl
 
 /-- Interprets a constructor type. See below for examples.  Example:
 ```
-TyₚA (V_cons A) ⟨Vec, ⟨⟩⟩
+TyₚA (V_cons A) ⟨⟨⟩, Vec⟩
 ```
 reduces to the type of `Vec.cons` as you would expect:
 ```
@@ -193,19 +193,19 @@ def TyₚA.{u, v} : Tyₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
 
 example {Vec : Nat -> Type} {_A : Type}
-  : TyₚA V_nil ⟨Vec, ⟨⟩⟩
+  : TyₚA V_nil ⟨⟨⟩, Vec⟩
   = Vec 0
   := rfl
 
 example {Vec : Nat -> Type} {A : Type}
-  : TyₚA (@V_cons A) ⟨Vec, ⟨⟩⟩
+  : TyₚA (@V_cons A) ⟨⟨⟩, Vec⟩
   = ((n : Nat) -> A -> Vec n -> Vec (n + 1))
   := rfl
 
 /-- Interprets a (mutual) inductive type. This is just `TyₚA` for each ctor joined with `×`.
 Example:
 ```
-ConₚA (V_cons ▹ V_nil A :: []) ⟨Vec, ⟨⟩⟩
+ConₚA (V_cons ▹ V_nil A :: []) ⟨⟨⟩, Vec⟩
 ```
 reduces to the Lean type
 ```
@@ -215,11 +215,11 @@ reduces to the Lean type
 ``` -/
 def ConₚA.{u, v} : Conₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | ⬝    , _ => PUnit
-| Γ ▹ A, γₛ => TyₚA.{u, v} A γₛ × ConₚA Γ γₛ
+| Γ ▹ A, γₛ => ConₚA Γ γₛ × TyₚA.{u, v} A γₛ
 
 example {Vec : Nat -> Type} {A : Type}
-  : ConₚA (V A) ⟨Vec, ⟨⟩⟩
-  = (((n : Nat) -> A -> Vec n -> Vec (n + 1)) × (Vec 0) × Unit)
+  : ConₚA (V A) ⟨⟨⟩, Vec⟩
+  = ((Unit × Vec 0) × ((n : Nat) -> A -> Vec n -> Vec (n + 1)))
   := rfl
 
 -- ## Displayed Algebras
@@ -235,7 +235,7 @@ def TyₛD.{u, v} : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, v} Aₛ -> Type ((max u v) 
 
 Example:
 ```
-ConₛD Vₛ ⟨Vec, ⟨⟩⟩
+ConₛD Vₛ ⟨⟨⟩, Vec⟩
 ```
 reduces to just one motive type:
 ```
@@ -243,13 +243,13 @@ reduces to just one motive type:
 ``` -/
 def ConₛD.{u, v} : (Γₛ : Conₛ.{u}) -> ConₛA.{u, v} Γₛ -> Type ((max u v) + 1)
 | ⬝, _ => PUnit
-| Γ ▹ A, ⟨a, γ⟩ => TyₛD A a × ConₛD Γ γ
+| Γ ▹ A, ⟨γ, a⟩ => ConₛD Γ γ × TyₛD A a
 
-example {Vec : Nat -> Type} : ConₛD Vₛ ⟨Vec, ⟨⟩⟩ = (((t : Nat) → Vec t -> Type) × PUnit.{2}) := rfl
+example {Vec : Nat -> Type} : ConₛD Vₛ ⟨⟨⟩, Vec⟩ = (PUnit.{2} × ((t : Nat) → Vec t -> Type)) := rfl
 
 def VarₛD : (v : Varₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (VarₛA v γₛ)
-| .vz  , ⟨a, _⟩ => a
-| .vs v, ⟨a, γD⟩ => VarₛD v γD
+| .vz  , ⟨_, a⟩ => a
+| .vs v, ⟨γD, a⟩ => VarₛD v γD
 
 /--
 The [original Agda code](https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IFD.agda#lines-17:20)
@@ -271,12 +271,12 @@ theorem TmₛD_app : TmₛD (.app t u)  γₛD = TmₛA_app.symm ▸ TmₛD t γ
 
 /-- Example:
 ```
-@TyₚD Vₛ ⟨Vec A, ⟨⟩⟩ V_nil ⟨P, ⟨⟩⟩ Vec.nil
+@TyₚD Vₛ ⟨⟨⟩, Vec A⟩ V_nil ⟨⟨⟩, P⟩ Vec.nil
   = P 0 Vec.nil
 ```
 Example:
 ```
-@TyₚD Vₛ ⟨Vec A, ⟨⟩⟩ V_cons ⟨P, ⟨⟩⟩ Vec.cons
+@TyₚD Vₛ ⟨⟨⟩, Vec A⟩ V_cons ⟨⟨⟩, P⟩ Vec.cons
   = ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
 ``` -/
 -- Note: The `Self` here can be a little misleading, as it may be a nested type with different indices.
@@ -290,17 +290,17 @@ inductive Vec (A : Type) : Nat -> Type
 | cons : (n : Nat) -> A -> Vec A n -> Vec A (n + 1)
 
 example {A : Type} {P : (n : Nat) -> Vec A n -> Type}
-  : @TyₚD Vₛ ⟨Vec A, ⟨⟩⟩ V_nil ⟨P, ⟨⟩⟩ Vec.nil
+  : @TyₚD Vₛ ⟨⟨⟩, Vec A⟩ V_nil ⟨⟨⟩, P⟩ Vec.nil
   = P 0 Vec.nil
   := rfl
 example {A : Type} {P : (n : Nat) -> Vec A n -> Type}
-  : @TyₚD Vₛ ⟨Vec A, ⟨⟩⟩ V_cons ⟨P, ⟨⟩⟩ Vec.cons
+  : @TyₚD Vₛ ⟨⟨⟩, Vec A⟩ V_cons ⟨⟨⟩, P⟩ Vec.cons
   = ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
   := rfl
 
 /-- Example:
 ```
-@ConₚD Vₛ ⟨Vec A, ⟨⟩⟩ (V_cons ▹ V_nil :: []) ⟨P, ⟨⟩⟩ ⟨Vec.nil, Vec.cons, ⟨⟩⟩
+@ConₚD Vₛ ⟨⟨⟩, Vec A⟩ (V_cons ▹ V_nil :: []) ⟨⟨⟩, P⟩ ⟨Vec.nil, Vec.cons, ⟨⟩⟩
 ```
 reduces to
 ```
@@ -310,14 +310,14 @@ reduces to
 ``` -/
 def ConₚD.{u, v} : (Γ : Conₚ.{u} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> ConₚA.{u, v} Γ γₛ -> Type (max u v)
 | ⬝, _, _ => PUnit
-| Γ ▹ A, γD, ⟨a, γ⟩ => TyₚD A γD a × ConₚD Γ γD γ
+| Γ ▹ A, γD, ⟨γ, a⟩ => ConₚD Γ γD γ × TyₚD A γD a
 
 example {P : (n : Nat) -> Vec A n -> Type}
-  : @ConₚD Vₛ ⟨Vec A, ⟨⟩⟩ ((⬝ ▹ V_nil) ▹ V_cons) ⟨P, ⟨⟩⟩ ⟨Vec.cons, Vec.nil, ⟨⟩⟩
+  : @ConₚD Vₛ ⟨⟨⟩, Vec A⟩ ((⬝ ▹ V_nil) ▹ V_cons) ⟨⟨⟩, P⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩
   = (
-        ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
-      × (P 0 Vec.nil)
-      × Unit
+      (Unit
+      × (P 0 Vec.nil)) -- slightly unfortunate that × is infixr in this case but we need infixl
+      × ((n : Nat) -> (a : A) -> (v : Vec A n) -> P n v -> P (n + 1) (Vec.cons n a v))
     )
   := rfl
 
@@ -341,7 +341,7 @@ example {A R} : TyₛS (SPi Nat (fun _ => U)) (Vec A) (fun _ _ => R) = ((n : Nat
 
 /-- Example:
 ```
-ConₛS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨fun _ _ => R, ⟨⟩⟩
+ConₛS Vₛ ⟨⟨⟩, Vec A⟩ ⟨fun _ _ => R, ⟨⟩⟩
 ```
 reduces to
 ```
@@ -350,13 +350,13 @@ reduces to
 ``` -/
 def ConₛS.{u, v} : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA.{u, v} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> Type (max u v)
 | ⬝, ⟨⟩, ⟨⟩ => PUnit
-| Γₛ ▹ Aₛ, ⟨αₛ, γₛ⟩, ⟨αₛd, γₛd⟩ => TyₛS Aₛ αₛ αₛd × ConₛS Γₛ γₛ γₛd
+| Γₛ ▹ Aₛ, ⟨γₛ, αₛ⟩, ⟨γₛd, αₛd⟩ => ConₛS Γₛ γₛ γₛd × TyₛS Aₛ αₛ αₛd
 
-example {A R} : ConₛS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨fun _ _ => R, ⟨⟩⟩ = (((n : Nat) -> (v : Vec A n) -> R) × Unit) := rfl
+example {A R} : ConₛS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, fun _ _ => R⟩ = (Unit × ((n : Nat) -> (v : Vec A n) -> R)) := rfl
 
 def VarₛS : (x : Varₛ Γₛ Aₛ) -> ConₛS Γₛ γₛ γD -> TyₛS Aₛ (VarₛA x γₛ) (VarₛD x γD)
-| .vz  , ⟨αₛS, γₛS⟩ => αₛS
-| .vs v, ⟨ _, γₛS⟩ => VarₛS v γₛS
+| .vz  , ⟨γₛS, αₛS⟩ => αₛS
+| .vs v, ⟨γₛS, αₛS⟩ => VarₛS v γₛS
 
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
 theorem TyₛS_helper {Aₛ : Tyₛ} {a b : TyₛA Aₛ} (hA : a = b) (d : TyₛD Aₛ a)
@@ -383,13 +383,13 @@ def TyₚS : (A : Tyₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (α : TyₚA A �
 
 def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (γ : ConₚA Γ γₛ) -> ConₚD Γ γₛD γ -> Prop
 | ⬝,   _,     ⟨⟩,       ⟨⟩ => True
-| Γ ▹ A, γₛS, ⟨α, γ⟩, ⟨αD, γD⟩ => TyₚS A γₛS α αD ∧ ConₚS Γ γₛS γ γD
+| Γ ▹ A, γₛS, ⟨γ, α⟩, ⟨γD, αD⟩ => ConₚS Γ γₛS γ γD ∧ TyₚS A γₛS α αD
 
-example : @ConₚS Vₛ ⟨Vec A, ⟨⟩⟩ ⟨Q, ⟨⟩⟩ (V A) ⟨f, ⟨⟩⟩ ⟨Vec.cons, Vec.nil, ⟨⟩⟩ ⟨consD, nilD, ⟨⟩⟩
-  = (
-      ((n : Nat) -> (a : A) -> (v : Vec A n) -> (f (n + 1) (Vec.cons n a v) = consD n a /- v -/ (f n v)))
-    ∧ (f 0 Vec.nil = nilD)
-    ∧ True
+example : @ConₚS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, Q⟩ (V A) ⟨⟨⟩, f⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩ ⟨⟨⟨⟩, nilD⟩, consD⟩
+  = ((
+      True
+    ∧ (f 0 Vec.nil = nilD))
+    ∧ ((n : Nat) -> (a : A) -> (v : Vec A n) -> (f (n + 1) (Vec.cons n a v) = consD n a /- v -/ (f n v)))
   )
   := rfl
 
@@ -476,15 +476,15 @@ theorem SubₛTm_id : (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
 
 def SubₛA : Subₛ Γₛ Δₛ -> ConₛA Γₛ -> ConₛA Δₛ
 | .nil     ,  _ => ⟨⟩
-| .cons σ t, γₛ => ⟨TmₛA t γₛ, SubₛA σ γₛ⟩
+| .cons σ t, γₛ => ⟨SubₛA σ γₛ, TmₛA t γₛ⟩
 
 def SubₛD : (σ : Subₛ Γₛ Δₛ) -> ConₛD Γₛ γₛ -> ConₛD Δₛ (SubₛA σ γₛ)
 | .nil, γₛD => ⟨⟩
-| .cons σ t, γₛD => ⟨TmₛD t γₛD, SubₛD σ γₛD⟩
+| .cons σ t, γₛD => ⟨SubₛD σ γₛD, TmₛD t γₛD⟩
 
 def SubₛS : (σ : Subₛ Γₛ Δₛ) -> ConₛS Γₛ γₛ γₛD -> ConₛS Δₛ (SubₛA σ γₛ) (SubₛD σ γₛD)
 | .nil, γₛD => ⟨⟩
-| .cons σ t, γₛD => ⟨TmₛS t γₛD, SubₛS σ γₛD⟩
+| .cons σ t, γₛD => ⟨SubₛS σ γₛD, TmₛS t γₛD⟩
 
 
 -- ## Now for Points...
@@ -520,12 +520,12 @@ def SubₚTm : {A : Tyₚ Γₛ} -> Tmₚ Δ A -> Subₚ Γ Δ -> Tmₚ Γ A
 
 def vsₚ : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> Tmₚ (Γ ▹ B) A
 | _, .var v => .var (.vs v)
-| _, .app (A := _A) t u => .app (vsₚ t) u
+| _, .app  (A := _A) t u => .app  (vsₚ t) u
 | _, .appr (A := _A) t u => .appr (vsₚ t) (vsₚ u)
 
 def weakenₚ.{u} : {Γ Δ : Conₚ.{u} Γₛ} -> {A : Tyₚ.{u} Γₛ} -> Subₚ.{u} Γ Δ -> Subₚ (Γ ▹ A) Δ
 | _, ⬝  , _, .nil => .nil
-| _, _ ▹ _, _, .cons σ t => Subₚ.cons (weakenₚ σ) (vsₚ t)
+| _, _ ▹ _, _, .cons σ t => .cons (weakenₚ σ) (vsₚ t)
 
 def Subₚ.id : (Γ : Conₚ Γₛ) -> Subₚ Γ Γ
 | ⬝ => .nil
@@ -535,8 +535,8 @@ theorem SubₚTm_id (t : Tmₚ Γ A) : SubₚTm t (Subₚ.id Γ) = t := sorry
 
 
 def VarₚA : Varₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
-| .vz  , ⟨a, _⟩ => a
-| .vs v, ⟨_, γ⟩ => VarₚA v γ
+| .vz  , ⟨_, a⟩ => a
+| .vs v, ⟨γ, _⟩ => VarₚA v γ
 
 def TmₚA.{u} : {A : Tyₚ Γₛ} -> Tmₚ.{u} Γ A -> ConₚA.{u} Γ γₛ -> TyₚA.{u} A γₛ
 | _, .var v, γ => VarₚA v γ
@@ -545,11 +545,11 @@ def TmₚA.{u} : {A : Tyₚ Γₛ} -> Tmₚ.{u} Γ A -> ConₚA.{u} Γ γₛ -> 
 
 def SubₚA : Subₚ Γ Δ -> ConₚA Γ γₛ -> ConₚA Δ γₛ
 | .nil     ,  _ => ⟨⟩
-| .cons σ t, γₛ => ⟨TmₚA t γₛ, SubₚA σ γₛ⟩
+| .cons σ t, γₛ => ⟨SubₚA σ γₛ, TmₚA t γₛ⟩
 
 def VarₚD : (x : Varₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (VarₚA x γ)
-| .vz  , ⟨aD, _⟩ => aD
-| .vs v, ⟨_, γD⟩ => VarₚD v γD
+| .vz  , ⟨ _, aD⟩ => aD
+| .vs v, ⟨γD,  _⟩ => VarₚD v γD
 
 -- This works but TmₛA_var doesn't work by rfl?
 theorem TmₚA_var : TmₚA (Tmₚ.var v) γₛ = VarₚA v γₛ := by rfl
@@ -561,7 +561,7 @@ def TmₚD : (t : Tmₚ Γ A) -> ConₚD Γ γₛD γ -> TyₚD A γₛD (TmₚA
 
 def SubₚD : (σ : Subₚ Γ Δ) -> ConₚD Γ γₛD γ -> ConₚD Δ γₛD (SubₚA σ γ)
 | .nil, γD => ⟨⟩
-| .cons σ t, γD => ⟨TmₚD t γD, SubₚD σ γD⟩
+| .cons σ t, γD => ⟨SubₚD σ γD, TmₚD t γD⟩
 
 
 -- # Sort and Points Constructors
@@ -603,12 +603,12 @@ example : constrTmₛ' (Ω := V String) (Ωₛ := Vₛ) (Aₛ := (SPi Nat (fun _
 
 def constrₛ' : Subₛ Ωₛ Γₛ -> ConₛA Γₛ
 | .nil => ⟨⟩
-| .cons σ t => ⟨constrTmₛ' (Ω := Ω) t, constrₛ' σ⟩
+| .cons σ t => ⟨constrₛ' σ, constrTmₛ' (Ω := Ω) t⟩
 
 def constrₛ : ConₛA Ωₛ := constrₛ' (Ω := Ω) (Subₛ.id Ωₛ)
 
 example : constrₛ (Ωₛ := Vₛ) (Ω := V String)
-  = ⟨fun u => Tmₚ (V String) (El (.app (Tmₛ.var .vz) u)), ⟨⟩⟩
+  = ⟨⟨⟩, fun u => Tmₚ (V String) (El (.app (Tmₛ.var .vz) u))⟩
   := rfl
 
 -- Lemma 16
@@ -674,7 +674,7 @@ def constrTmₚ' : {A : Tyₚ _} -> Tmₚ Ω A -> TyₚA A (constrₛ (Ω := Ω)
 
 def constrₚ' : Subₚ Ω Γ -> ConₚA Γ (constrₛ (Ω := Ω))
 | .nil => ⟨⟩
-| .cons σ t => ⟨constrTmₚ' (Ω := Ω) t, constrₚ' σ⟩
+| .cons σ t => ⟨constrₚ' σ, constrTmₚ' (Ω := Ω) t⟩
 
 def constrₚ := constrₚ' (Subₚ.id Ω)
 
@@ -707,7 +707,7 @@ def elimTmₛ' : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, 
 
 def elimₛ' : (σ : Subₛ Ωₛ Γₛ) -> ConₛS Γₛ (SubₛA σ constrₛ) (SubₛD σ ωₛD)
 | .nil => ⟨⟩
-| .cons σ t => ⟨elimTmₛ' (Ω := Ω) ωₛD t, elimₛ' σ⟩
+| .cons σ t => ⟨elimₛ' σ, elimTmₛ' (Ω := Ω) ωₛD t, ⟩
 
 
 

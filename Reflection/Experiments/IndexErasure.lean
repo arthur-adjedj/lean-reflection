@@ -11,8 +11,8 @@ def eraseTyₛ : Tyₛ.{u} -> Tyₛ.{u}
 
 /-- For example maps sort-ctx `[Vec : Nat -> U, ...]` into `[VecE : U, ...]`. -/
 def eraseConₛ : Conₛ.{u} -> Conₛ.{u}
-| .nil       => .nil
-| .cons _ Γₛ => .cons U (eraseConₛ Γₛ)
+| ⬝      => ⬝
+| Γₛ ▹ _ => eraseConₛ Γₛ ▹ U
 
 /-- This is a no-op, other than changing the type of the variable. -/
 def eraseVarₛ : Varₛ Γₛ Aₛ -> Varₛ (eraseConₛ Γₛ) U
@@ -33,8 +33,8 @@ def eraseTyₚ {Γₛ : Conₛ} : Tyₚ Γₛ -> Tyₚ (eraseConₛ Γₛ)
 | PFunc Self Rest => PFunc (eraseTmₛ Self) (eraseTyₚ Rest)
 
 def eraseConₚ : Conₚ Γₛ -> Conₚ (eraseConₛ Γₛ)
-| .nil => .nil
-| .cons A Γ => .cons (eraseTyₚ A) (eraseConₚ Γ)
+| ⬝ => ⬝
+| Γ ▹ A => (eraseConₚ Γ) ▹ (eraseTyₚ A)
 
 
 
@@ -76,15 +76,14 @@ def guardTyₛ : (Aₛ : Tyₛ) -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ))
 
 /-- For example maps sort-stx `[Vec : Nat -> U]` into `[VecG : Nat -> VecE -> U]`. -/
 def guardConₛ : (Γₛ : Conₛ) -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> Conₛ
-| .nil       , ⟨⟩         => .nil
+| ⬝      , ⟨⟩         => ⬝
 -- | .cons Aₛ Γₛ, ⟨aₛE, γₛE⟩ => .cons (guardTyₛ' Aₛ aₛE) (guardConₛ Γₛ γₛE)
-| .cons Aₛ Γₛ, ⟨aₛE, γₛE⟩ =>
-  .cons (guardTyₛ (Γₛ := Aₛ :: Γₛ) Aₛ ⟨aₛE, γₛE⟩ (.var .vz)) (guardConₛ Γₛ γₛE)
+| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => guardConₛ Γₛ γₛE ▹ guardTyₛ (Γₛ := Γₛ ▹ Aₛ) Aₛ ⟨γₛE, aₛE⟩ (.var .vz)
   -- .cons (guardTyₛ (Γₛ := Γₛ) Aₛ γₛE sorry) (guardConₛ Γₛ γₛE)
 
-#check guardConₛ Vₛ ⟨List Nat, ⟨⟩⟩
-#reduce guardConₛ Vₛ ⟨List Nat, ⟨⟩⟩
-#reduce ConₛA (guardConₛ Vₛ ⟨List Nat, ⟨⟩⟩)
+#check guardConₛ Vₛ ⟨⟨⟩, List Nat⟩
+#reduce guardConₛ Vₛ ⟨⟨⟩, List Nat⟩
+#reduce ConₛA (guardConₛ Vₛ ⟨⟨⟩, List Nat⟩)
 
 -- def guardVarₛ : (Γₛ : Conₛ.{max u v}) -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> Varₛ.{max u v} Γₛ Aₛ ->
 --   Varₛ.{max u v} (guardConₛ.{u, v} Γₛ γₛE) (guardTyₛ.{u, v} Aₛ aₛE) -- ! problem here aₛE needs to come from γₛE, but doesn't rn
@@ -101,7 +100,7 @@ def guardConₛ : (Γₛ : Conₛ) -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> 
 --     done
 -- | SPi T f, tm => sorry
 
-theorem guardTyₛ_step (v : Varₛ Γₛ Aₛ) : guardTyₛ Aₛ γₛE (.var v) = @guardTyₛ (Bₛ :: Γₛ) Aₛ (bₛE, γₛE) (.var (.vs v)) := by
+theorem guardTyₛ_step (v : Varₛ Γₛ Aₛ) : guardTyₛ Aₛ γₛE (.var v) = @guardTyₛ (Γₛ ▹ Bₛ) Aₛ (γₛE, bₛE) (.var (.vs v)) := by
   induction Aₛ with
   | U =>
     -- most scuffed proof
@@ -117,8 +116,10 @@ theorem guardTyₛ_step (v : Varₛ Γₛ Aₛ) : guardTyₛ Aₛ γₛE (.var v
     simp [guardTyₛ]
     apply funext
     intro x
-    exact ih x (v)
+    -- exact ih x (v)
+    sorry
     done
+
 #check vshift
 
 -- def stepUp :
@@ -133,8 +134,8 @@ theorem guardTyₛ_step (v : Varₛ Γₛ Aₛ) : guardTyₛ Aₛ γₛE (.var v
   The runtime de-brujin value of this variable doesn't change. So this is basically just a cast operator. -/
 def guardVarₛ : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> (v : Varₛ Γₛ Aₛ) ->
   Varₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE (.var v))
-| Aₛ :: Γₛ, .(Aₛ), ⟨aₛE, γₛE⟩, .vz => (.vz) -- because of .vz we know that Aₛ === Aₛ
-| Bₛ :: Γₛ, Aₛ, ⟨bₛE, γₛE⟩, .vs v => by -- this is not the variable we're looking for: `Bₛ !== Aₛ`.
+| Γₛ ▹ Aₛ, .(Aₛ), ⟨γₛE, aₛE⟩, .vz => (.vz) -- because of .vz we know that Aₛ === Aₛ
+| Γₛ ▹ Bₛ, Aₛ, ⟨γₛE, bₛE⟩, .vs v => by -- this is not the variable we're looking for: `Bₛ !== Aₛ`.
   -- Now `v : Varₛ Γₛ Aₛ`, so a variable in the smaller context.
   -- Example `Vec:N->U ⊢ VAR(Vec) : N -> U`.
 
@@ -143,7 +144,7 @@ def guardVarₛ : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> (γₛE : ConₛA (erase
   --
   let vG  : Varₛ (guardConₛ        Γₛ        γₛE ) (guardTyₛ (Γₛ:=Γₛ) Aₛ γₛE (.var v)) := guardVarₛ γₛE v
   -- Okay that worked, and now we adapt v' back into the larger context `Bₛ :: Γₛ`.
-  let vG' : Varₛ (guardConₛ (Bₛ :: Γₛ) (bₛE, γₛE)) (guardTyₛ (Γₛ:=Γₛ) Aₛ γₛE (.var v)) := .vs vG
+  let vG' : Varₛ (guardConₛ (Γₛ ▹ Bₛ) (γₛE, bₛE)) (guardTyₛ (Γₛ:=Γₛ) Aₛ γₛE (.var v)) := .vs vG
 
   --      ⊢ Varₛ (guardConₛ (Bₛ :: Γₛ) (bₛE, γₛE)) (guardTyₛ (Γₛ:=Bₛ::Γₛ) Aₛ (bₛE, γₛE) (.var (.vs v)))
   -- Now the problem is that
@@ -199,17 +200,17 @@ def guardTyₚ.{u} (γₛE : ConₛA.{u} (eraseConₛ Γₛ)) : (A : Tyₚ Γₛ
 #check guardTyₚ
 
 def guardConₚ (γₛE : ConₛA (eraseConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (eraseConₚ Γ) γₛE) -> Conₚ (guardConₛ Γₛ γₛE)
-| .nil, ⟨⟩ => .nil
-| .cons A Γ, ⟨aE, γE⟩ => .cons (guardTyₚ γₛE A aE) (guardConₚ γₛE Γ γE)
+| ⬝, ⟨⟩ => ⬝
+| Γ ▹ A, ⟨γE, aE⟩ => guardConₚ γₛE Γ γE ▹ guardTyₚ γₛE A aE
 
 inductive VecE : Type where
 | nil : VecE
 | cons : Nat -> String -> VecE -> VecE
 
 /-- VecG : Nat -> VecE -> Type -/
-example : guardConₛ Vₛ ⟨VecE, ⟨⟩⟩ = (SPi Nat fun _ => SPi VecE fun _ => U) :: [] := rfl
+example : guardConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
 
-#reduce guardConₚ (Γₛ := Vₛ) ⟨VecE, ⟨⟩⟩ (V String) ⟨VecE.nil, VecE.cons, ⟨⟩⟩
+#reduce guardConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
 
 def downₛ
   {Γₛ : Conₛ} {Γ : Conₚ Γₛ}
@@ -220,8 +221,8 @@ def downₛ
 := sorry
 
 #check TyₛA.{0,0} U
-#check TyₚA.{0,0} (Γₛ:=Vₛ) (El (.app (.var .vz) 123)) ⟨Vec String, ⟨⟩⟩
-#reduce TyₚA.{0,0} (Γₛ:=Vₛ) (PPi Nat fun _n => El (.app (.var .vz) _n)) ⟨Vec String, ⟨⟩⟩
+#check TyₚA.{0,0} (Γₛ:=Vₛ) (El (.app (.var .vz) 123)) ⟨⟨⟩, Vec String⟩
+#reduce TyₚA.{0,0} (Γₛ:=Vₛ) (PPi Nat fun _n => El (.app (.var .vz) _n)) ⟨⟨⟩, Vec String⟩
 
 def downₚ
   {Γₛ : Conₛ} {Γ : Conₚ Γₛ}
@@ -232,13 +233,3 @@ def downₚ
 | El         Self, a => ⟨TmₚA (El (eraseTmₛ Self)) γₛE, El (guardTmₛ Self)⟩
 | PPi   T    Rest, a => sorry
 | PFunc Self Rest, a => sorry
-
-def translate
-  (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE)
-  (γₛG : ConₛA (guardConₛ Γₛ γₛE)) (γG : ConₚA (guardConₚ γₛE Γ γE) γₛG)
-  : (t : Tmₚ Γ A) -> Tmₚ
-
-def reconstruct (Γₛ : Conₛ) (Γ : Conₚ Γₛ) :
-
-def typeIndexErase (Aₛ : Tyₛ) (Γ : Conₚ (Aₛ :: [])) : (Γ' : Conₚ (U :: [])) × (iso : ConₛA (Aₛ::[]) -> ConₛA Γ') × Unit
-  := sorry
