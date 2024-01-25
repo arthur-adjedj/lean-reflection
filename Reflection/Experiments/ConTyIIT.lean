@@ -1,4 +1,4 @@
-import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
+import Reflection.Util.EqHelpers
 
 /-
   Example from section 7.1 of http://von-raumer.de/academic/phd_vonraumer.pdf .
@@ -7,10 +7,6 @@ import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 
 set_option pp.proofs true
 set_option linter.unusedVariables false
-
-theorem eq_symm_cancel {T : I -> Type _} {a b : I} (h : a = b) (x : T b) : h ▸ h.symm ▸ x = x
-  := by cases h; rfl
-
 -- # Syntax
 
 mutual
