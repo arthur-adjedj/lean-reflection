@@ -36,7 +36,14 @@ def eraseConₚ : Conₚ Γₛ -> Conₚ (eraseConₛ Γₛ)
 | ⬝ => ⬝
 | Γ ▹ A => (eraseConₚ Γ) ▹ (eraseTyₚ A)
 
+def eraseVarₚ : Varₚ Γ A -> Varₚ (eraseConₚ Γ) (eraseTyₚ A)
+| .vz => .vz
+| .vs v => .vs (eraseVarₚ v)
 
+def eraseTmₚ : Tmₚ Γ A -> Tmₚ (eraseConₚ Γ) (eraseTyₚ A)
+| .var v => .var (eraseVarₚ v)
+| .app (A := _A) t u => .app (eraseTmₚ t) u
+| .appr t u => .appr (eraseTmₚ t) (eraseTmₚ u)
 
 -- # Guard
 
@@ -203,6 +210,13 @@ def guardConₚ (γₛE : ConₛA (eraseConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> 
 | ⬝, ⟨⟩ => ⬝
 | Γ ▹ A, ⟨γE, aE⟩ => guardConₚ γₛE Γ γE ▹ guardTyₚ γₛE A aE
 
+/-- Given `"Vec.cons n x v", we map it to `"VecG.cons n x v"`.` -/
+def guardTmₚ (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE)
+  : {A : Tyₚ Γₛ} -> (aE : TyₚA (eraseTyₚ A) γₛE) -> (tm : Tmₚ Γ A) -> Tmₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A aE)
+| A, aE, .var v => .var sorry
+| _, _, @Tmₚ.app .(Γₛ) .(Γ) T A t u => .app (guardTmₚ γₛE γE sorry t) u -- problem here here! We can't pattern match on `aE`.
+| A, aE, .appr (A:=.(A)) t u => .appr (guardTmₚ γₛE γE aE t) u
+
 inductive VecE : Type where
 | nil : VecE
 | cons : Nat -> String -> VecE -> VecE
@@ -212,24 +226,15 @@ example : guardConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi Ve
 
 #reduce guardConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
 
-def downₛ
-  {Γₛ : Conₛ} {Γ : Conₚ Γₛ}
-  (γₛ : ConₛA Γₛ) (γ : ConₚA Γ γₛ)
-  (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE)
-  (γₛG : ConₛA (guardConₛ Γₛ γₛE)) (γG : ConₚA (guardConₚ γₛE Γ γE) γₛG)
-  : {A : Tyₚ Γₛ} -> (a : TyₚA A γₛ) -> (aE : TyₚA (eraseTyₚ A) γₛE) × TyₚA (guardTyₚ γₛE A aE) γₛG
-:= sorry
+/-- For example maps `"Vec 123"` to `⟨("VecE", "VecG 123 e"⟩`. -/
+def downₛ (γₛE : ConₛA (eraseConₛ Γₛ)) (a : Tmₛ Γₛ Aₛ)
+  : Tmₛ (eraseConₛ Γₛ) (eraseTyₛ Aₛ) × Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE a)
+  := ⟨eraseTmₛ a, guardTmₛ γₛE a⟩
 
-#check TyₛA.{0,0} U
-#check TyₚA.{0,0} (Γₛ:=Vₛ) (El (.app (.var .vz) 123)) ⟨⟨⟩, Vec String⟩
-#reduce TyₚA.{0,0} (Γₛ:=Vₛ) (PPi Nat fun _n => El (.app (.var .vz) _n)) ⟨⟨⟩, Vec String⟩
+example : downₛ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (.app (.var .vz) 123)
+  = ⟨Tmₛ.var Varₛ.vz, Tmₛ.app (Tmₛ.var Varₛ.vz) 123⟩ := rfl
 
-def downₚ
-  {Γₛ : Conₛ} {Γ : Conₚ Γₛ}
-  (γₛ : ConₛA Γₛ) (γ : ConₚA Γ γₛ)
-  (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE)
-  (γₛG : ConₛA (guardConₛ Γₛ γₛE)) (γG : ConₚA (guardConₚ γₛE Γ γE) γₛG)
-  : {A : Tyₚ Γₛ} -> (a : Tmₚ Γ A) -> (aE : Tmₚ (eraseConₚ Γ) (eraseTyₚ A)) × Tmₚ (guardConₛ Γₛ γₛE) (guardTyₚ γₛE A aE)
-| El         Self, a => ⟨TmₚA (El (eraseTmₛ Self)) γₛE, El (guardTmₛ Self)⟩
-| PPi   T    Rest, a => sorry
-| PFunc Self Rest, a => sorry
+def downₚ (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE) (a : Tmₚ Γ A)
+  : (aE : Tmₚ (eraseConₚ Γ) (eraseTyₚ A)) × Tmₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA aE γE))
+  := let aE := eraseTmₚ a
+     ⟨aE, guardTmₚ γₛE γE (TmₚA aE γE) a⟩
