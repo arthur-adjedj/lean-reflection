@@ -2,8 +2,6 @@ import Reflection.MutualInductive
 
 open Tyₛ Tyₚ Varₛ Varₚ
 
--- set_option pp.universes true
-
 -- # Erasure
 
 def eraseTyₛ : Tyₛ.{u} -> Tyₛ.{u}
@@ -47,115 +45,40 @@ def eraseTmₚ : Tmₚ Γ A -> Tmₚ (eraseConₚ Γ) (eraseTyₚ A)
 
 -- # Guard
 
+example : TyₛA (eraseTyₛ Aₛ) = Type := rfl
 
-/-- For example maps `Vec : Nat -> U` to `VecG : Nat -> VecE -> U`. -/
-def guardTyₛ' : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, u} (eraseTyₛ Aₛ) -> Tyₛ.{u}
+/-- For example maps `Vec : Nat -> U` to `VecG : Nat -> VecE -> U`.
+  Note that `∀Aₛ, TyₛA (eraseTyₛ Aₛ) = Type`. -/
+-- def guardTyₛ : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, u} (eraseTyₛ Aₛ) -> Tyₛ.{u}
+def guardTyₛ : (Aₛ : Tyₛ.{u}) -> Type u -> Tyₛ.{u}
 | U         , aₛE => SPi aₛE (fun _ => U)
-| SPi T Rest, aₛE => SPi T   (fun t => guardTyₛ' (Rest t) aₛE)
-
-
-/-- Given a `Γₛ ⊢ Self a₁ a₂ a₃ : U` (note the type `U`),
-  computes the type `SelfE -> U` for `(guard Γₛ) ⊢ SelfG a₁ a₂ a₃ : SelfE -> U`. -/
-def guardTyₛ : (Aₛ : Tyₛ) -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ)) -> (t : Tmₛ Γₛ Aₛ) -> Tyₛ
-| U      , γₛE, tm => SPi (TmₛA (eraseTmₛ tm) γₛE) fun _ => U
-| SPi T f, γₛE, tm => SPi T                        fun τ => guardTyₛ (f τ) γₛE (.app tm τ)
-
--- example : guardTyₛ' Aₛ aₛE = guardTyₛ (Γₛ := Γₛ ▹ Aₛ) Aₛ ⟨γₛE, aₛE⟩ (.var .vz) := by
---   induction Aₛ with
---   | U =>
---     rw [guardTyₛ, guardTyₛ', eraseTmₛ, eraseVarₛ, TmₛA_var]
---     exact .refl _
---   | SPi T f ih =>
---     rw [guardTyₛ, guardTyₛ']
---     simp
---     apply funext
---     intro a
---     have ih := @ih a aₛE
---     rw [ih]
---     -- on the lhs `.var .vz       : Tmₛ (f a     :: Γₛ) (f a)`
---     -- on the rhs `.var .vz       : Tmₛ (SPi T f :: Γₛ) (SPi T f)`
---     -- on the rhs `(.var .vz) @ a : Tmₛ (SPi T f :: Γₛ) (f a)`
---     -- @Eq Tyₛ
---     --   @guardTyₛ (f a :: Γₛ) (f a) (aₛE, γₛE) (Tmₛ.var Varₛ.vz)
---     --   @guardTyₛ (SPi T f :: Γₛ) (f a) (aₛE, γₛE) (Tmₛ.var Varₛ.vz @ a)
---     done
+| SPi T Rest, aₛE => SPi T   (fun t => guardTyₛ (Rest t) aₛE)
 
 /-- For example maps sort-stx `[Vec : Nat -> U]` into `[VecG : Nat -> VecE -> U]`. -/
-def guardConₛ : (Γₛ : Conₛ) -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> Conₛ
+def guardConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ)) -> Conₛ.{u}
 | ⬝      , ⟨⟩         => ⬝
-| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => guardConₛ Γₛ γₛE ▹ guardTyₛ (Γₛ := Γₛ ▹ Aₛ) Aₛ ⟨γₛE, aₛE⟩ (.var .vz)
-
-
-set_option trace.aesop true
-
-theorem guardTyₛ_step (v : Varₛ Γₛ Aₛ) : guardTyₛ Aₛ γₛE (.var v) = @guardTyₛ (Γₛ ▹ Bₛ) Aₛ (γₛE, bₛE) (.var (.vs v)) := by
-  induction Aₛ with
-  | U =>
-    -- most scuffed proof
-    simp only [guardTyₛ]
-    simp only [eraseTmₛ]
-    simp [VarₛA]
-    rw [TmₛA_var]
-    rw [TmₛA_var]
-    rfl
-  | SPi T A ih =>
-    rw [guardTyₛ]
-    rw [guardTyₛ]
-    simp [guardTyₛ]
-    apply funext
-    intro u
-    have := ih u
-    exact ih u (v)
-    sorry
-    done
-
-def guardVarₛ_asdfasdfkljh :
-  {Γₛ : Conₛ} ->
-  (γₛE : ConₛA (eraseConₛ Γₛ)) ->
-  (bₛE : TyₛA U) ->
-  (v : Varₛ Γₛ Aₛ) ->
-  Varₛ (guardConₛ  Γₛ         γₛE      ) (guardTyₛ (Γₛ:=Γₛ    ) Aₛ  γₛE       (.var      v )) ->
-  Varₛ (guardConₛ (Γₛ ▹ Bₛ) (γₛE, bₛE)) (guardTyₛ (Γₛ:=Γₛ▹Bₛ) Aₛ (γₛE, bₛE) (.var (.vs v)))
-| Γₛ ▹ Cₛ, ⟨γₛE, cₛE⟩, bₛE, .vz, oo => by
-  -- let ⟨γₛE, cₛE⟩ := γₛE
-  sorry
-| _, γₛE, bₛE, .vs v, o => sorry
+| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ aₛE)
 
 /-- Given a variable `Vec:N->U ⊢ VAR(Vec) : N->U`, we return `VecG:N->VecE->U ⊢ VAR(VecG) : N->VecE->U`.
   The runtime de-brujin value of this variable doesn't change. So this is basically just a cast operator. -/
-def guardVarₛ : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) ->
+def guardVarₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) ->
   (v : Varₛ Γₛ Aₛ) ->
-  Varₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE (.var v))
-| Γₛ ▹ Aₛ, .(Aₛ), ⟨γₛE, aₛE⟩, .vz => .vz -- because of .vz we know that Aₛ === Aₛ
-| Γₛ ▹ Bₛ, Aₛ, ⟨γₛE, bₛE⟩, .vs v => by -- this is not the variable we're looking for: `Bₛ !== Aₛ`.
-  have : guardConₛ (Γₛ ▹ Bₛ) (γₛE, bₛE) = Conₛ.ext (guardConₛ Γₛ γₛE) (guardTyₛ Bₛ γₛE (.var <| sorry)) := sorry
-  rw [this]
-  let ih := guardVarₛ γₛE v
-  exact .vs ih
-  -- Now `v : Varₛ Γₛ Aₛ`, so a variable in the smaller context.
-  -- Example `Vec:N->U ⊢ VAR(Vec) : N -> U`.
+  Varₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (VarₛA (eraseVarₛ v) γₛE))
+| _ ▹ _, _       , .vz   => .vz
+| _ ▹ _, ⟨γₛE, _⟩, .vs v => .vs (guardVarₛ γₛE v)
 
-  -- We want to cast that variable into `v' : Varₛ (guardConₛ Γₛ) (guardTyₛ Aₛ (.var v))`
-  -- Example `VecG:N->VecE->U ⊢ VAR(VecG) : N -> VecE -> U`
-  let vG  : Varₛ (guardConₛ  Γₛ         γₛE      ) (guardTyₛ (Γₛ:=Γₛ) Aₛ γₛE (.var v)) := guardVarₛ γₛE v
-  let vG' : Varₛ (guardConₛ (Γₛ ▹ Bₛ) (γₛE, bₛE)) (guardTyₛ (Γₛ:=Γₛ) Aₛ γₛE (.var v)) := .vs vG
-  --      ⊢ Varₛ (guardConₛ (Γₛ ▹ Bₛ) (γₛE, bₛE)) (guardTyₛ (Γₛ:=Γₛ▹Bₛ) Aₛ (γₛE, bₛE) (.var (.vs v)))
-  -- TODO Try similar approach to SubₛA_weaken
-  rw [<- guardTyₛ_step] -- this uses `sorry`
-  exact vG'
-
-
-
--- #exit
 
 /-- Given `Γₛ ⊢ Self a₁ a₂ a₃ : U` returns `guard(Γₛ) ⊢ SelfG a₁ a₂ a₃ : SelfE -> U`.
 
   Challange is that we don't know which type (`Even`, `Odd`, etc) `t` refers to,
   it could be `Even @ 123` or `Odd @ 123`.
-  So the output term's type needs to depend on `t`.
-  -/
-def guardTmₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> (t : Tmₛ Γₛ Aₛ) -> Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE t)
-| Γₛ, γₛE, .var v              => .var (guardVarₛ γₛE v)
+  So the output term's type needs to depend on `t`.  -/
+def guardTmₛ : {Γₛ : Conₛ.{u}} -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ)) ->
+  (t : Tmₛ.{u} Γₛ Aₛ) ->
+  Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (TmₛA (eraseTmₛ t) γₛE))
+| Γₛ, γₛE, .var v              => by
+  rw [eraseTmₛ, TmₛA] -- ! Why is this rw necessary just to unfold definitions?
+  exact .var (guardVarₛ.{u, u} γₛE v)
 | Γₛ, γₛE, .app (A := _Aₛ) t u => .app (guardTmₛ γₛE t) u
 
 /-- For example maps the `Vec.cons` ctor of type
@@ -166,7 +89,8 @@ into `VecG.cons` of type
 ```
 VecG : Nat -> VecE -> U ⊢ (n:Nat) -> (x:A) -> (e : VecE) -> VecG n e -> VecG (n+1) (VecE.cons (n+1) x e)
 ``` -/
-def guardTyₚ.{u} (γₛE : ConₛA.{u} (eraseConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA (eraseTyₚ A) γₛE) -> Tyₚ (guardConₛ Γₛ γₛE)
+def guardTyₚ.{u} (γₛE : ConₛA.{u} (eraseConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA.{u, u} (eraseTyₚ A) γₛE) ->
+  Tyₚ (guardConₛ Γₛ γₛE)
 | El         Self, aE => El (.app (guardTmₛ γₛE Self) aE) -- VecG ... (VecE.cons ...)
 | PPi   T    Rest, aE => PPi T (fun t => guardTyₚ γₛE (Rest t) (aE t))
 | PFunc Self Rest, aE => -- this `Self` could be from a different ind type from the mutual block!
@@ -179,15 +103,12 @@ def guardConₚ (γₛE : ConₛA (eraseConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> 
 | Γ ▹ A, ⟨γE, aE⟩ => guardConₚ γₛE Γ γE ▹ guardTyₚ γₛE A aE
 
 
-/-- ! Cast `"Vec.cons"` to `"VecG.cons"`. -/
-def guardVarₚ : {Γ : Conₚ Γₛ} -> {A : Tyₚ Γₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> (γE : ConₚA (eraseConₚ Γ) γₛE) ->
+/-- Cast `"Vec.cons"` to `"VecG.cons"`, similar to `guardTmₚ`. -/
+def guardVarₚ : {Γ : Conₚ Γₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> (γE : ConₚA (eraseConₚ Γ) γₛE) ->
   (v : Varₚ Γ A) ->
   Varₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA (.var <| eraseVarₚ v) γE))
-| Γ ▹ A, .(A), γₛE, γE, .vz => .vz
-| Γ ▹ B,   A , γₛE, ⟨γE, bE⟩, .vs v => .vs (guardVarₚ γₛE γE v)
-
-
-#exit
+| _ ▹ _, _  ,       _, .vz   => .vz
+| _ ▹ _, γₛE, ⟨γE, _⟩, .vs v => .vs (guardVarₚ γₛE γE v)
 
 /-- Given `"Vec.cons n x v" : "Vec n"`, we change it to `"VecG.cons n x v vG" : "VecG n (VecE.cons n x v)"`.
   Here, note that we construct `"vG" : "VecG n v"`; in general for every inductive argument. -/
@@ -202,8 +123,8 @@ def guardTmₚ (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseCon�
   .appr (.app (guardTmₚ γₛE γE t) e) g
 
 #print axioms guardTmₚ
-#print axioms guardVarₚ
-#print axioms eraseTmₚ
+
+-- # Example time!
 
 inductive VecE : Type where
 | nil : VecE
@@ -221,7 +142,7 @@ example : guardConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi Ve
 -- def TmₛE (Γₛ : Conₛ) (Aₛ : Tyₛ) : Type 1 := Tmₛ (eraseConₛ Γₛ) (eraseTyₛ Aₛ)
 -- def TmₛG (Γₛ : Conₛ) (Aₛ : Tyₛ) {γₛE : ConₛA (eraseConₛ Γₛ)} : Type 1 := Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE a)
 def TmₛL {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (eraseConₛ Γₛ)) (a : Tmₛ Γₛ Aₛ) : Type 1
-  := Tmₛ (eraseConₛ Γₛ) (eraseTyₛ Aₛ) × Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ γₛE a)
+  := Tmₛ (eraseConₛ Γₛ) (eraseTyₛ Aₛ) × Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (TmₛA (eraseTmₛ a) γₛE))
 
 /-- For example maps `"Vec 123"` to `⟨("VecE", "VecG 123 e"⟩`. -/
 def lowerₛ (γₛE : ConₛA (eraseConₛ Γₛ)) (a : Tmₛ Γₛ Aₛ) : TmₛL γₛE a
