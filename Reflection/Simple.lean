@@ -508,7 +508,7 @@ namespace Example.TA2
   | Tm.app _s z => Nat.succ (tan z)
 
   theorem tan_nat_inverse : tan (nat n) = n := by induction n with
-  | zero => simp
+  | zero => simp [tan, nat, nat0]
   | succ n ih => simp [tan, nat, ih]
 
   #reduce nat 0
