@@ -429,6 +429,8 @@ def SubₛTm : {Aₛ : _} -> Tmₛ Δₛ Aₛ -> Subₛ Γₛ Δₛ -> Tmₛ Γ�
 | _, .var v, σ => SubₛVar v σ
 | _, .app (A := _A) t u, σ => .app (SubₛTm t σ) u
 
+theorem SubₛTm_app : SubₛTm (Tmₛ.app t u) σ = .app (SubₛTm t σ) u := rfl
+
 /-- Point types are valid in a given sort context. Given a substitution between sort contexts,
   changes the point type's underlying sort context. -/
 def SubₛTy : Tyₚ Δₛ -> Subₛ Γₛ Δₛ -> Tyₚ Γₛ
@@ -520,29 +522,48 @@ theorem VarₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {v : Varₛ Δₛ Aₛ} : Var�
   | vz => let .cons σ t := σ; rfl
   | vs v ih => let .cons σ _ := σ; apply ih
 
-/-
-Eq
-  (Eq.rec (Eq.rec h₁ h₂) a)
-  (Eq.rec h₃ b)
--/
+theorem aux {T : I -> Sort u} {i₁ i₂ i₃ : I} (h₂ : i₂ = i₃) (h₁ : i₁ = i₂) (h₃ : i₁ = i₃) (x : T i₁)
+  : h₂ ▸ h₁ ▸ x = h₃ ▸ x
+  := by cases h₁; rfl
 
-#check Eq.mp
-#check eq_symm_cancel
+theorem auxx {I : X -> Sort u} {T : (u : X) -> I u -> Sort u} {i₁ i₂ i₃ : (u:X) -> I u} (h₂ : i₂ u = i₃ u) (h₁ : i₁ = i₂) (h₃ : i₁ u = i₃ u) (x : T u (i₁ u))
+  : h₂ ▸ h₁ ▸ x = h₃ ▸ x
+  := by cases h₁; rfl
+
+-- set_option trace.Meta.isDefEq true in
+-- set_option pp.explicit true in
 set_option pp.notation false in
 -- set_option pp.proofs false in
-theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} :  TmₛD t (SubₛD σ γₛ) = TmₛA_Subₛ ▸ TmₛD (SubₛTm t σ) γₛ := by
+theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
+  : TmₛD t (SubₛD σ γₛD) = TmₛA_Subₛ ▸ TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD := by
   induction t with
   | @var Bₛ v =>
-    rw [TmₛD];
+    rw [TmₛD]
     conv => rhs; simp only [SubₛTm]
-    rw [VarₛD_Subₛ]
-
-    rw [Eq.trans]
-    -- conv => rhs; rw [eq_cast_trans]
-    simp [eq_cast_trans (h₁ := TmₛD.proof_1 Δₛ Bₛ (SubₛA σ _) v ) (h₂ := @VarₛA_Subₛ Γₛ Δₛ Bₛ _ σ v)]
-    -- simp [Eq.trans, eq_symm_cancel, Eq.symm]
-    done
-  | app t u ih => simp_all only [SubₛTm, TmₛD_app]
+    rw [VarₛD_Subₛ, aux]
+  | @app T Aₛ t u ih =>
+    rw [TmₛD]
+    simp [SubₛTm_app]
+    rw [TmₛD]
+    have h₃ : TmₛA (SubₛTm t σ) γₛ u = TmₛA (Tmₛ.app t u) (SubₛA σ γₛ) := by simp only [TmₛA, TmₛA_Subₛ]
+    rw [ih]
+    have : Eq.rec (TmₛD (SubₛTm t σ) γₛD) TmₛA_Subₛ u = TmₛA_Subₛ ▸ (TmₛD (SubₛTm t σ) γₛD u) := by
+      -- aesop
+      sorry
+    have : TmₛD.proof_2 Δₛ (SubₛA σ γₛ) _ _ t u ▸ Eq.rec (TmₛD (SubₛTm t σ) γₛD) TmₛA_Subₛ u
+      = TmₛD.proof_2 Δₛ (SubₛA σ γₛ) _ _ t u ▸ TmₛA_Subₛ ▸ (TmₛD (SubₛTm t σ) γₛD u)
+      := by simp_all only [TmₛA_app]
+    rw [this]
+    rw [aux (h₃ := h₃)]
+    have := @auxx T u (fun u => TyₛA (Aₛ u)) (fun u i => TyₛD (Aₛ u) i) -- this is the worst
+      (fun u => TmₛA (SubₛTm t σ) γₛ u)
+      (fun u => TmₛA t (SubₛA σ γₛ) u)
+      (fun u => TmₛA (.app t u) (SubₛA σ γₛ))
+      (TmₛD.proof_2 Δₛ (SubₛA σ γₛ) T Aₛ t u)
+      ((@TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t))
+      h₃
+      (TmₛD (SubₛTm t σ) γₛD u)
+    rw [this]
 
 #exit
 

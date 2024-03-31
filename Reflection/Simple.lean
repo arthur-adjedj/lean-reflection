@@ -494,6 +494,7 @@ namespace Example.TA2
   -- Some convenience functions to type less
   def fals : Tm BoolSig ⬝ := Tm.var (    .vz)
   def tru  : Tm BoolSig ⬝ := Tm.var (.vs .vz)
+  @[implemented_by Nat.zero]
   def nat0 : Tm NatSig ⬝ := Tm.var .vz
   def natS : Tm NatSig (⬝ ->> ⬝) := Tm.var (.vs .vz)
 
