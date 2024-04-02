@@ -522,18 +522,11 @@ theorem VarₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {v : Varₛ Δₛ Aₛ} : Var�
   | vz => let .cons σ t := σ; rfl
   | vs v ih => let .cons σ _ := σ; apply ih
 
-theorem aux {T : I -> Sort u} {i₁ i₂ i₃ : I} (h₂ : i₂ = i₃) (h₁ : i₁ = i₂) (h₃ : i₁ = i₃) (x : T i₁)
-  : h₂ ▸ h₁ ▸ x = h₃ ▸ x
-  := by cases h₁; rfl
+theorem Eq.cast_apply_u {A : T -> Sort _} {a₁ a₂ : (u:T) -> A u} {h : a₁ = a₂} {hu : (u : T) -> a₁ u = a₂ u}
+  {D : (u : T) -> A u -> Sort _} {d₁ : (u : T) -> D u (a₁ u)} {d₂ : (u : T) -> D u (a₂ u)}
+  : d₁ = h ▸ d₂ -> (u : T) -> d₁ u = (hu u) ▸ d₂ u := by
+  intro ih u; cases h; cases ih; rfl
 
-theorem auxx {I : X -> Sort u} {T : (u : X) -> I u -> Sort u} {i₁ i₂ i₃ : (u:X) -> I u} (h₂ : i₂ u = i₃ u) (h₁ : i₁ = i₂) (h₃ : i₁ u = i₃ u) (x : T u (i₁ u))
-  : h₂ ▸ h₁ ▸ x = h₃ ▸ x
-  := by cases h₁; rfl
-
--- set_option trace.Meta.isDefEq true in
--- set_option pp.explicit true in
-set_option pp.notation false in
--- set_option pp.proofs false in
 theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
   : TmₛD t (SubₛD σ γₛD) = TmₛA_Subₛ ▸ TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD := by
   induction t with
@@ -546,24 +539,26 @@ theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : 
     simp [SubₛTm_app]
     rw [TmₛD]
     have h₃ : TmₛA (SubₛTm t σ) γₛ u = TmₛA (Tmₛ.app t u) (SubₛA σ γₛ) := by simp only [TmₛA, TmₛA_Subₛ]
+    rw [aux (h₃ := h₃)]
+    have apply_u {A : T -> Sort _} {f g : (u:T) -> A u} : (u : T) -> f = g -> f u = g u := by
+      intro u h; cases h; rfl
+    have ih := Eq.cast_apply_u
+      (h := Eq.symm <| @TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t)
+      (hu := fun u => Eq.symm <| apply_u u (@TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t))
+      ih
+      u
     rw [ih]
-    have : Eq.rec (TmₛD (SubₛTm t σ) γₛD) TmₛA_Subₛ u = TmₛA_Subₛ ▸ (TmₛD (SubₛTm t σ) γₛD u) := by
-      -- aesop
-      sorry
-    have : TmₛD.proof_2 Δₛ (SubₛA σ γₛ) _ _ t u ▸ Eq.rec (TmₛD (SubₛTm t σ) γₛD) TmₛA_Subₛ u
-      = TmₛD.proof_2 Δₛ (SubₛA σ γₛ) _ _ t u ▸ TmₛA_Subₛ ▸ (TmₛD (SubₛTm t σ) γₛD u)
-      := by simp_all only [TmₛA_app]
+    have {α} {a b : α} {h : a = b} : h.symm.symm = h := rfl
     rw [this]
     rw [aux (h₃ := h₃)]
-    have := @auxx T u (fun u => TyₛA (Aₛ u)) (fun u i => TyₛD (Aₛ u) i) -- this is the worst
-      (fun u => TmₛA (SubₛTm t σ) γₛ u)
-      (fun u => TmₛA t (SubₛA σ γₛ) u)
-      (fun u => TmₛA (.app t u) (SubₛA σ γₛ))
-      (TmₛD.proof_2 Δₛ (SubₛA σ γₛ) T Aₛ t u)
-      ((@TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t))
-      h₃
-      (TmₛD (SubₛTm t σ) γₛD u)
-    rw [this]
+    exact apply_u u TmₛA_Subₛ
+where
+  aux {I} {T : I -> Sort _} {i₁ i₂ i₃ : I} (h₂ : i₂ = i₃) (h₁ : i₁ = i₂) (h₃ : i₁ = i₃) (x : T i₁)
+    : h₂ ▸ h₁ ▸ x = h₃ ▸ x
+    := by cases h₁; rfl
+
+#print axioms TmₛD_Subₛ
+
 
 #exit
 
