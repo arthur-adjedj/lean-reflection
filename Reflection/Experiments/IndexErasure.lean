@@ -4,66 +4,66 @@ open Tyₛ Tyₚ Varₛ Varₚ
 
 -- # Erasure
 
-def eraseTyₛ : Tyₛ.{u} -> Tyₛ.{u}
+def ETyₛ : Tyₛ.{u} -> Tyₛ.{u}
 | _ => U
 
 /-- For example maps sort-ctx `[Vec : Nat -> U, ...]` into `[VecE : U, ...]`. -/
-def eraseConₛ : Conₛ.{u} -> Conₛ.{u}
+def EConₛ : Conₛ.{u} -> Conₛ.{u}
 | ⬝      => ⬝
-| Γₛ ▹ _ => eraseConₛ Γₛ ▹ U
+| Γₛ ▹ _ => EConₛ Γₛ ▹ U
 
 /-- This is a no-op, other than changing the type of the variable. -/
-def eraseVarₛ : Varₛ Γₛ Aₛ -> Varₛ (eraseConₛ Γₛ) U
+def EVarₛ : Varₛ Γₛ Aₛ -> Varₛ (EConₛ Γₛ) U
 | .vz   => .vz
-| .vs v => .vs (eraseVarₛ v)
+| .vs v => .vs (EVarₛ v)
 
 /-- For example maps `Vec : Nat -> U ⊢ Vec 123 : U` into `VecE : U ⊢ VecE : U`. -/
-def eraseTmₛ : Tmₛ Γₛ Aₛ -> Tmₛ (eraseConₛ Γₛ) U
-| .var v              => .var (eraseVarₛ v)
-| .app (A := _Aₛ) t u => eraseTmₛ t
+def ETmₛ : Tmₛ Γₛ Aₛ -> Tmₛ (EConₛ Γₛ) U
+| .var v              => .var (EVarₛ v)
+| .app (A := _Aₛ) t u => ETmₛ t
 
 /-- For example for `Vec.nil`, maps `Vec : Nat -> U ⊢ Vec 0` into `VecE : U ⊢ VecE`,
 and for `Vec.cons` maps `Vec : Nat -> U ⊢ (n:Nat) -> α -> Vec n -> Vec (n+1)`
 into `VecE : U ⊢ (n:Nat) -> α -> VecE -> VecE`. -/
-def eraseTyₚ {Γₛ : Conₛ} : Tyₚ Γₛ -> Tyₚ (eraseConₛ Γₛ)
-| El         Self => El (eraseTmₛ Self)
-| PPi   T    Rest => PPi T (fun t => eraseTyₚ (Rest t))
-| PFunc Self Rest => PFunc (eraseTmₛ Self) (eraseTyₚ Rest)
+def ETyₚ {Γₛ : Conₛ} : Tyₚ Γₛ -> Tyₚ (EConₛ Γₛ)
+| El         Self => El (ETmₛ Self)
+| PPi   T    Rest => PPi T (fun t => ETyₚ (Rest t))
+| PFunc Self Rest => PFunc (ETmₛ Self) (ETyₚ Rest)
 
-def eraseConₚ : Conₚ Γₛ -> Conₚ (eraseConₛ Γₛ)
+def EConₚ : Conₚ Γₛ -> Conₚ (EConₛ Γₛ)
 | ⬝ => ⬝
-| Γ ▹ A => (eraseConₚ Γ) ▹ (eraseTyₚ A)
+| Γ ▹ A => (EConₚ Γ) ▹ (ETyₚ A)
 
-def eraseVarₚ : Varₚ Γ A -> Varₚ (eraseConₚ Γ) (eraseTyₚ A)
+def EVarₚ : Varₚ Γ A -> Varₚ (EConₚ Γ) (ETyₚ A)
 | .vz => .vz
-| .vs v => .vs (eraseVarₚ v)
+| .vs v => .vs (EVarₚ v)
 
-def eraseTmₚ : Tmₚ Γ A -> Tmₚ (eraseConₚ Γ) (eraseTyₚ A)
-| .var v => .var (eraseVarₚ v)
-| .app (A := _A) t u => .app (eraseTmₚ t) u
-| .appr t u => .appr (eraseTmₚ t) (eraseTmₚ u)
+def ETmₚ : Tmₚ Γ A -> Tmₚ (EConₚ Γ) (ETyₚ A)
+| .var v => .var (EVarₚ v)
+| .app (A := _A) t u => .app (ETmₚ t) u
+| .appr t u => .appr (ETmₚ t) (ETmₚ u)
 
 -- # Guard
 
 /-- For example maps `Vec : Nat -> U` to `VecG : Nat -> VecE -> U`.
   Note that `∀Aₛ, TyₛA (eraseTyₛ Aₛ) = Type`. -/
 -- def guardTyₛ : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, u} (eraseTyₛ Aₛ) -> Tyₛ.{u}
-def guardTyₛ : (Aₛ : Tyₛ.{u}) -> Type u -> Tyₛ.{u}
+def GTyₛ : (Aₛ : Tyₛ.{u}) -> Type u -> Tyₛ.{u}
 | U         , aₛE => SPi aₛE (fun _ => U)
-| SPi T Rest, aₛE => SPi T   (fun t => guardTyₛ (Rest t) aₛE)
+| SPi T Rest, aₛE => SPi T   (fun t => GTyₛ (Rest t) aₛE)
 
 /-- For example maps sort-stx `[Vec : Nat -> U]` into `[VecG : Nat -> VecE -> U]`. -/
-def guardConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ)) -> Conₛ.{u}
+def GConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u} (EConₛ Γₛ)) -> Conₛ.{u}
 | ⬝      , ⟨⟩         => ⬝
-| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ aₛE)
+| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (GConₛ Γₛ γₛE) (GTyₛ Aₛ aₛE)
 
 /-- Given a variable `Vec:N->U ⊢ VAR(Vec) : N->U`, we return `VecG:N->VecE->U ⊢ VAR(VecG) : N->VecE->U`.
   The runtime de-brujin value of this variable doesn't change. So this is basically just a cast operator. -/
-def guardVarₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) ->
+def GVarₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (EConₛ Γₛ)) ->
   (v : Varₛ Γₛ Aₛ) ->
-  Varₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (VarₛA (eraseVarₛ v) γₛE))
+  Varₛ (GConₛ Γₛ γₛE) (GTyₛ Aₛ (VarₛA (EVarₛ v) γₛE))
 | _ ▹ _, _       , .vz   => .vz
-| _ ▹ _, ⟨γₛE, _⟩, .vs v => .vs (guardVarₛ γₛE v)
+| _ ▹ _, ⟨γₛE, _⟩, .vs v => .vs (GVarₛ γₛE v)
 
 
 /-- Given `Γₛ ⊢ Self a₁ a₂ a₃ : U` returns `guard(Γₛ) ⊢ SelfG a₁ a₂ a₃ : SelfE -> U`.
@@ -71,13 +71,13 @@ def guardVarₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) ->
   Challange is that we don't know which type (`Even`, `Odd`, etc) `t` refers to,
   it could be `Even @ 123` or `Odd @ 123`.
   So the output term's type needs to depend on `t`.  -/
-def guardTmₛ : {Γₛ : Conₛ.{u}} -> (γₛE : ConₛA.{u, u} (eraseConₛ Γₛ)) ->
+def GTmₛ : {Γₛ : Conₛ.{u}} -> (γₛE : ConₛA.{u, u} (EConₛ Γₛ)) ->
   (t : Tmₛ.{u} Γₛ Aₛ) ->
-  Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (TmₛA (eraseTmₛ t) γₛE))
+  Tmₛ (GConₛ Γₛ γₛE) (GTyₛ Aₛ (TmₛA (ETmₛ t) γₛE))
 | Γₛ, γₛE, .var v              => by
-  rw [eraseTmₛ, TmₛA]
-  exact .var (guardVarₛ.{u, u} γₛE v)
-| Γₛ, γₛE, .app (A := _Aₛ) t u => .app (guardTmₛ γₛE t) u
+  rw [ETmₛ, TmₛA]
+  exact .var (GVarₛ.{u, u} γₛE v)
+| Γₛ, γₛE, .app (A := _Aₛ) t u => .app (GTmₛ γₛE t) u
 
 /-- For example maps the `Vec.cons` ctor of type
 ```
@@ -87,40 +87,40 @@ into `VecG.cons` of type
 ```
 VecG : Nat -> VecE -> U ⊢ (n:Nat) -> (x:A) -> (e : VecE) -> VecG n e -> VecG (n+1) (VecE.cons (n+1) x e)
 ``` -/
-def guardTyₚ.{u} (γₛE : ConₛA.{u} (eraseConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA.{u, u} (eraseTyₚ A) γₛE) ->
-  Tyₚ (guardConₛ Γₛ γₛE)
-| El         Self, aE => El (.app (guardTmₛ γₛE Self) aE) -- VecG ... (VecE.cons ...)
-| PPi   T    Rest, aE => PPi T (fun t => guardTyₚ γₛE (Rest t) (aE t))
+def GTyₚ.{u} (γₛE : ConₛA.{u} (EConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA.{u, u} (ETyₚ A) γₛE) ->
+  Tyₚ (GConₛ Γₛ γₛE)
+| El         Self, aE => El (.app (GTmₛ γₛE Self) aE) -- VecG ... (VecE.cons ...)
+| PPi   T    Rest, aE => PPi T (fun t => GTyₚ γₛE (Rest t) (aE t))
 | PFunc Self Rest, aE => -- this `Self` could be from a different ind type from the mutual block!
-    PPi (TmₛA (eraseTmₛ Self) γₛE) fun e =>  -- (e : SelfE) ->
-      PFunc (.app (guardTmₛ γₛE Self) e) <| -- SelfG e ->
-        guardTyₚ γₛE Rest (aE e)
+    PPi (TmₛA (ETmₛ Self) γₛE) fun e =>  -- (e : SelfE) ->
+      PFunc (.app (GTmₛ γₛE Self) e) <| -- SelfG e ->
+        GTyₚ γₛE Rest (aE e)
 
-def guardConₚ (γₛE : ConₛA (eraseConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (eraseConₚ Γ) γₛE) -> Conₚ (guardConₛ Γₛ γₛE)
+def GConₚ (γₛE : ConₛA (EConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (EConₚ Γ) γₛE) -> Conₚ (GConₛ Γₛ γₛE)
 | ⬝, ⟨⟩ => ⬝
-| Γ ▹ A, ⟨γE, aE⟩ => guardConₚ γₛE Γ γE ▹ guardTyₚ γₛE A aE
+| Γ ▹ A, ⟨γE, aE⟩ => GConₚ γₛE Γ γE ▹ GTyₚ γₛE A aE
 
 
 /-- Cast `"Vec.cons"` to `"VecG.cons"`, similar to `guardTmₚ`. -/
-def guardVarₚ : {Γ : Conₚ Γₛ} -> (γₛE : ConₛA (eraseConₛ Γₛ)) -> (γE : ConₚA (eraseConₚ Γ) γₛE) ->
+def GVarₚ : {Γ : Conₚ Γₛ} -> (γₛE : ConₛA (EConₛ Γₛ)) -> (γE : ConₚA (EConₚ Γ) γₛE) ->
   (v : Varₚ Γ A) ->
-  Varₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA (.var <| eraseVarₚ v) γE))
+  Varₚ (GConₚ γₛE Γ γE) (GTyₚ γₛE A (TmₚA (.var <| EVarₚ v) γE))
 | _ ▹ _, _  ,       _, .vz   => .vz
-| _ ▹ _, γₛE, ⟨γE, _⟩, .vs v => .vs (guardVarₚ γₛE γE v)
+| _ ▹ _, γₛE, ⟨γE, _⟩, .vs v => .vs (GVarₚ γₛE γE v)
 
 /-- Given `"Vec.cons n x v" : "Vec n"`, we change it to `"VecG.cons n x v vG" : "VecG n (VecE.cons n x v)"`.
   Here, note that we construct `"vG" : "VecG n v"`; in general for every inductive argument. -/
-def guardTmₚ (γₛE : ConₛA (eraseConₛ Γₛ)) (γE : ConₚA (eraseConₚ Γ) γₛE)
+def GTmₚ (γₛE : ConₛA (EConₛ Γₛ)) (γE : ConₚA (EConₚ Γ) γₛE)
   : (tm : Tmₚ Γ A) ->
-    Tmₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA (eraseTmₚ tm) γE))
-| Tmₚ.var v => .var (guardVarₚ γₛE γE v)
-| Tmₚ.app (A := _A) t u => .app (guardTmₚ γₛE γE t) u
+    Tmₚ (GConₚ γₛE Γ γE) (GTyₚ γₛE A (TmₚA (ETmₚ tm) γE))
+| Tmₚ.var v => .var (GVarₚ γₛE γE v)
+| Tmₚ.app (A := _A) t u => .app (GTmₚ γₛE γE t) u
 | Tmₚ.appr t u =>
-  let e := TmₚA (eraseTmₚ u) γE
-  let g := guardTmₚ γₛE γE u
-  .appr (.app (guardTmₚ γₛE γE t) e) g
+  let e := TmₚA (ETmₚ u) γE
+  let g := GTmₚ γₛE γE u
+  .appr (.app (GTmₚ γₛE γE t) e) g
 
-#print axioms guardTmₚ
+#print axioms GTmₚ
 
 -- # Example time!
 
@@ -132,83 +132,85 @@ inductive VecG : Nat -> VecE -> Type u where
 | nil : VecG 0 .nil
 | cons : (n : Nat) -> (x:String) -> (e : VecE) -> VecG n e -> VecG (n+1) (VecE.cons n x e)
 
-#reduce guardTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var .vz)
-#reduce guardTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var (.vs .vz))
+#reduce GTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var .vz)
+#reduce GTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var (.vs .vz))
 
 /-- VecG : Nat -> VecE -> Type -/
-example : guardConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
-#reduce guardConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
+example : GConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
+#reduce GConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
 
--- # Lowering
+/-
+  # Lowering
+-/
 
 -- ## Sorts
 
-/-- For example maps `"Vec 123"` to `⟨("VecE", "VecG 123"⟩`. -/
-def lowerTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (eraseConₛ Γₛ))
+#check GTyₛ
+def LTyₛ : Type (u+1) := Tyₛ.{u} × Tyₛ.{u}
+def lTyₛ (A : Tyₛ) : LTyₛ := ⟨ETyₛ A, GTyₛ A γE⟩
+def LTyₛA (AL : LTyₛ) : Type _ := TyₛA AL.fst × TyₛA AL.snd
+def LConₛ : Type (u+1) := Conₛ.{u} × Conₛ.{u}
+def LConₛA (ΓL : LConₛ) : Type _ := ConₛA ΓL.fst × ConₛA ΓL.snd
+def LVarₛ : Type (u+1) :=
+
+abbrev LTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (EConₛ Γₛ))
   (t : Tmₛ Γₛ Aₛ)
-  : Tmₛ (eraseConₛ Γₛ) U × Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (TmₛA (eraseTmₛ t) γₛE))
-  := ⟨eraseTmₛ t, guardTmₛ γₛE t⟩
+  : Type _
+  := Tmₛ (EConₛ Γₛ) U × Tmₛ (GConₛ Γₛ γₛE) (GTyₛ Aₛ (TmₛA (ETmₛ t) γₛE))
+
+/-- For example maps `"Vec 123"` to `⟨("VecE", "VecG 123"⟩`. -/
+def lTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (EConₛ Γₛ))
+  (t : Tmₛ Γₛ Aₛ)
+  : LTmₛ γₛE t
+  -- : Tmₛ (eraseConₛ Γₛ) U × Tmₛ (guardConₛ Γₛ γₛE) (guardTyₛ Aₛ (TmₛA (eraseTmₛ t) γₛE))
+  := ⟨ETmₛ t, GTmₛ γₛE t⟩
 
 /-- We want to obtain the actual `(e : VecE) × VecG e`. -/
-def lowerTmₛA (γₛE : ConₛA.{0, 0} (eraseConₛ Γₛ)) (γₛG : ConₛA (guardConₛ Γₛ γₛE)) (T : Tmₛ Γₛ U) : Type
-  := @Sigma (TmₛA (eraseTmₛ T) γₛE) (TmₛA (guardTmₛ γₛE T) γₛG)
+def lTmₛA (γₛE : ConₛA.{0, 0} (EConₛ Γₛ)) (γₛG : ConₛA (GConₛ Γₛ γₛE)) (T : Tmₛ Γₛ U) : Type
+  := @Sigma (TmₛA (ETmₛ T) γₛE) (TmₛA (GTmₛ γₛE T) γₛG)
 
 /-- `"Vec 123" : "U"` becomes `⟨"VecE", "VecG 123"⟩ : "U" × "VecE -> U"` -/
-example : lowerTmₛ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (.app (.var .vz) 123)
+example : lTmₛ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (.app (.var .vz) 123)
   = ⟨.var .vz, .app (.var .vz) 123⟩
   := rfl
 
-example : lowerTmₛA (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ (.app (.var .vz) 123)
+example : lTmₛA (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ (.app (.var .vz) 123)
   = ((e : VecE) × VecG 123 e)
   := rfl
 
 
 -- ## Points
 
+abbrev LTmₚ {Γₛ : Conₛ} (Γ : Conₚ Γₛ) {A : Tyₚ Γₛ} {γₛE} (γE : ConₚA (EConₚ Γ) γₛE) (t : Tmₚ Γ A)
+  : Type _
+  := Tmₚ (EConₚ Γ) (ETyₚ A) × Tmₚ (GConₚ γₛE Γ γE) (GTyₚ γₛE A (TmₚA (ETmₚ t) γE))
+
 /-- Given a term `"Vec.cons n x v"`, produce
   `⟨"VecE.cons n x vᴱ", "VecG.cons n x vᴳ"⟩ : Tmₛ ["VecE"] "U" × Tmₛ ["VecG"] "VecE -> U"`. -/
-def lowerTmₚ {Γₛ : Conₛ} {Γ : Conₚ Γₛ} {A : Tyₚ Γₛ} {γₛE} {γE : ConₚA (eraseConₚ Γ) γₛE}
+def lTmₚ {Γₛ : Conₛ} {Γ : Conₚ Γₛ} {A : Tyₚ Γₛ} {γₛE} {γE : ConₚA (EConₚ Γ) γₛE}
   (t : Tmₚ Γ A)
-  : Tmₚ (eraseConₚ Γ) (eraseTyₚ A) × Tmₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA (eraseTmₚ t) γE))
-  := ⟨eraseTmₚ t, guardTmₚ γₛE γE t⟩
+  : LTmₚ Γ γE t
+  -- : Tmₚ (eraseConₚ Γ) (eraseTyₚ A) × Tmₚ (guardConₚ γₛE Γ γE) (guardTyₚ γₛE A (TmₚA (eraseTmₚ t) γE))
+  := ⟨ETmₚ t, GTmₚ γₛE γE t⟩
 
-/-- Given `"Vec.cons ..." : "Vec 123"`, produce `⟨"VecE.cons ...", "VecG.cons ..."⟩ : @Sigma VecE (VecG 123)`.
-  Here,  -/
-def lowerTmₚA (γₛE : ConₛA (eraseConₛ Γₛ)) (γₛG : ConₛA (guardConₛ Γₛ γₛE))
-  (γE : ConₚA (eraseConₚ Γ) γₛE) (γG : ConₚA (guardConₚ γₛE Γ γE) γₛG)
+/-- Given `"Vec.cons ..." : "Vec 123"`, produce `⟨"VecE.cons ...", "VecG.cons ..."⟩ : @Sigma VecE (VecG 123)`. -/
+def lTmₚA (γₛE : ConₛA (EConₛ Γₛ)) (γₛG : ConₛA (GConₛ Γₛ γₛE))
+  (γE : ConₚA (EConₚ Γ) γₛE) (γG : ConₚA (GConₚ γₛE Γ γE) γₛG)
   (t : Tmₚ Γ (El T))
-  : lowerTmₛA γₛE γₛG T
+  : lTmₛA γₛE γₛG T
   := by
-    let g := TmₚA (guardTmₚ γₛE γE t) γG
-    rw [guardTyₚ] at g
+    let g := TmₚA (GTmₚ γₛE γE t) γG
+    rw [GTyₚ] at g
     rw [TyₚA] at g
     rw [TmₛA] at g
-    exact ⟨TmₚA (eraseTmₚ t) γE, g⟩
+    exact ⟨TmₚA (ETmₚ t) γE, g⟩
 
-
-example : lowerTmₚA (Γₛ := Vₛ) (Γ := V String)
+example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
   ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
   (.var (.vs .vz))
   = ⟨VecE.nil, VecG.nil⟩ := rfl
 
-#check V_cons
-/-
-def V_cons {A : Type} : Tyₚ Vₛ :=
-  PPi Nat fun n =>                     -- (n : Nat) ->
-    PPi A fun _ =>                     -- A ->
-      PFunc (.app (Tmₛ.var vz) n) <|   -- Vec n ->
-        El (.app (Tmₛ.var vz) (n + 1)) -- Vec (n + 1)
--/
-
--- example : lowerTmₚA (Γₛ := Vₛ) (Γ := V String)
---   ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩
---   ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
---   (.appr (.app (.app (.var .vz) 0) "foo") (.var (.vs .vz)))
---   = ⟨VecE.cons 0 "" VecE.nil, VecG.cons 0 "" VecE.nil VecG.nil⟩
---   := rfl
-
--- the same as above, just with needless let binders
-example : lowerTmₚA (Γₛ := Vₛ) (Γ := V String)
+example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
   ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩
   ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
   (
@@ -220,12 +222,129 @@ example : lowerTmₚA (Γₛ := Vₛ) (Γ := V String)
   = ⟨VecE.cons 0 "" VecE.nil, VecG.cons 0 "" VecE.nil VecG.nil⟩
   := rfl
 
-/- We first apply `VecE.rec`, then inside each branch we apply `VecG.rec`. -/
-def Vec.reconstruct : (e : VecE) -> VecG n e -> Vec String n
-| .nil        , g => let .nil := g; .nil
-| .cons n x vE, g => let .cons n x vE vG := g; .cons n x (reconstruct vE vG)
 
-/- TODO We need to show that theorems about VecEG are equiv to theorems about Vec.
-  So given
--/
+def r : (TyₛA Aₛ) -> TyₛA Aₛ
+  := sorry
+
 #check 1
+
+/- # Reconstructing Proofs
+  Given `P : Vec n -> Prop`, We can derive `P' : @Sigma VecE (VecG n) -> Prop`.
+  And now given `prf' : P' ⟨vE, vG⟩`, we need to find `?prf : P v`.
+
+  So originally we had goal `v : Vec n ⊢ ?prf : P v`.
+  We have a `down : Vec n -> Sigma VecE (VecG n)` function, such that `down ∘ up = id`. // down is `lower`
+  We derive `P' : Sigma VecE (VecG n) -> Prop`, such that `P' (down v) -> P v`. !!! how "such that"? This is the crucial part.
+-/
+
+namespace VecExample
+def VecL (n) := @Sigma VecE (VecG n)
+def nilL : VecL 0 := ⟨.nil, .nil⟩
+def consL : (n : Nat) -> String -> VecL n -> VecL (n + 1)
+  := fun n x v => ⟨.cons n x v.fst, .cons n x v.fst v.snd⟩
+
+-- This is `lowerTmₚA`
+def down : Vec String n -> VecL n
+| .nil => nilL
+| .cons n x v => consL n x (down v)
+
+section Useless
+  /- We first apply `VecE.rec`, then inside each branch we apply `VecG.rec`. -/
+  def up' : (e : VecE) -> VecG n e -> Vec String n
+  | .nil        , g => let .nil := g; .nil
+  | .cons n x vE, g => let .cons n x vE vG := g; .cons n x (up' vE vG)
+
+  def up : @Sigma VecE (VecG n) -> Vec String n := fun v => up' v.fst v.snd
+
+  theorem Vec.up_down : up (down v) = v := by
+    induction v with
+    | nil => rfl
+    | cons n x v ih => simp_all only [up, up']
+
+  @[simp] theorem Vec.down_eta : ⟨(down v).fst, (down v).snd⟩ = down v := by sorry -- simp [down]
+  @[simp] theorem Vec.up_down_eta : up ⟨(down v).fst, (down v).snd⟩ = v := by simp [down_eta, up_down]
+  theorem Vec.up'_is_up : up'.{u} (down v).fst (down v).snd = up.{u} ⟨(down v).fst, (down v).snd⟩ := by rw [up]
+  @[simp] theorem Vec.up'_down_eta : up' (down v).fst (down v).snd = v := by rw [Vec.up'_is_up, Vec.up_down_eta]
+end Useless
+
+@[irreducible] def len  : Vec String n -> Nat := fun _ => n
+@[irreducible] def lenL : VecL n       -> Nat := fun _ => n
+theorem len_is_lenL (v : Vec String n)           : len v         = lenL (down v) := by unfold len; unfold lenL; rfl
+theorem lenL_is_len (vE : VecE) (vG : VecG n vE) : lenL ⟨vE, vG⟩ = len (up ⟨vE, vG⟩) := by unfold len; unfold lenL; rfl
+
+/-- Our original proof goal. -/
+def P (v : Vec String n) : Prop := ∀x, len  (.cons n x v) = .succ (len v)
+/-- Construct derived proof goal, along with `reconstruct` proof below. -/
+def PL.{u} (vL : VecL.{u} n) : Prop := ∀x, lenL (consL n x vL) = .succ (lenL vL)
+
+#check Eq
+
+theorem reconstruct' : PL (down v) -> P v :=
+  fun h x => by
+    have h := h x
+    rw [len_is_lenL] -- we need to get `len_is_lenL` lemmas for each symbol we encounter... will be quite a few.
+    rw [len_is_lenL]
+    rw [down]
+    exact h
+
+-- You'll need to construct two concrete vE and vG such that `h` is true. But they're just `down` evaluated.
+theorem reconstruct (h : ⟨vE, vG⟩ = down v) : PL ⟨vE, vG⟩ -> P v := by rw [h]; exact reconstruct'
+
+end VecExample
+
+-- And now we are done. If the original goal has been `v : Vec n ⊢ ?g : P v`,
+-- then we can close it with `?g := reconstruct _ ?g'`, where `vE, vG ⊢ ?g' : P' ⟨vE, vG⟩`,
+-- and then give `?g'` to the smt solver.
+-- Time to generalize!
+
+-- ! This is just "up"... but we want something for arbitrary formulas
+def up : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γₛ :=
+  sorry
+
+-- * Need some way to express types such as `∀x, ... = ...` as terms in order to pattern match on them.
+def reconstruct : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γₛ := sorry
+
+-- ? But can you express our example `Vec.reconstruct` with Tmₚ-based `reconstruct`?
+-- ! No, the above is just "up".
+def aaa := reconstruct
+  (Γₛ := Vₛ) (γₛ := ⟨⟨⟩, Vec String⟩) (γₛE := ⟨⟨⟩, VecE⟩) (γₛG := ⟨⟨⟩, VecG⟩)
+  (.app (.var .vz) 123)
+
+/-
+  Just imagine that it's a Tm, and how would it work then. The key will be iterating over the context
+  I think, since that's where all the inductive types with indices come from.
+  So then you just do induction over the context and it should be fine?
+  `Γ ⊢ t : A` encoded as `t : Tm Γ A`.
+  ? Maybe you can do something with substitutions, since they're basically just morphisms
+  ? between contexts? So we want `Tm Γ A` --> `Tm Γ' A'`, where Γ' is the index-erased/guarded ctx.
+
+-/
+
+#check aaa
+
+
+
+inductive Ctx : Type where
+inductive Ty : Ctx -> Type where
+inductive Tm : (Γ : Ctx) -> Ty Γ -> Type 1 where -- these are pre-terms. we'll have to add wellfoundedness later.
+| var : Nat -> Tm Γ A
+| pi : Type -> Tm Γ A -- TODO The "type" here can't be pattern matched, UNLESS... we somehow reintroduce that via wellfoundedness later.
+
+def Vec.append : Vec α n → Vec α m → Vec α (n + m)
+| xs, .nil         => xs
+| xs, .cons _ y ys => (append xs (.cons _ y ys))
+
+open Lean Elab Term
+
+def lower : Expr -> MetaM Expr
+| .app f a => return .app (<- lower f) (<- lower a)
+| .forallE var dom body bi => return .forallE var
+| _ => throwError "oh no"
+
+/-- Given `P`, produces `P'` -/
+elab "lower! " t:term : term => do
+  let tm <- elabTerm t none
+  return tm
+
+-- Okay let's assume our env only contains some extremely basic primitives.
+#check ∀n, ∀v, lower! ∀x, len (.cons n x v) = .succ (len v)
