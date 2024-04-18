@@ -1,7 +1,5 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
--- import Reflection.Util.EqHelpers
-import Aesop
--- import Tactic.NormCast
+import Reflection.Util.EqHelpers
 
 /-
   Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
@@ -9,11 +7,13 @@ import Aesop
 -/
 
 set_option pp.proofs true
+set_option pp.fieldNotation false
+
 
 -- # Syntax
 
 /-- Example for `Nat` is `U`, for `Vec` is `SPi Nat (fun n => U)`. -/
-inductive Tyₛ : Type (u+1)
+inductive Tyₛ : Type (u + 1)
 | U : Tyₛ
 | SPi : (T : Type u) -> (T -> Tyₛ) -> Tyₛ
 open Tyₛ
@@ -122,13 +122,13 @@ end Examples
 
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`.
   The second `v` universe parameter is not strictly necessary, but it is later used to the same effect as `ULift`. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
 | U => Type (max u v)
 | SPi T A => (t : T) -> TyₛA (A t)
 
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat -> Type) × Unit`. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def ConₛA.{u, v} : Conₛ.{u} -> Type ((max u v) + 1)
 | .nil => PUnit.{(max u v) + 2}
 | .ext Γ A => Prod.{(max u v) + 1} (ConₛA Γ) (TyₛA.{u, v} A)
@@ -145,7 +145,7 @@ example : ConₛA Vₛ = (PUnit.{2} × (Nat -> Type)) := Eq.refl _
 
   This function returns an actual (unquoted) Lean type, e.g. `Vec`.
 -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def VarₛA : Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
 | vz  , ⟨_, a⟩ => a
 | vs v, ⟨γₛ, _⟩ => VarₛA v γₛ
@@ -176,13 +176,15 @@ _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
 ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
 ```
 -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA.{u} Aₛ
 | Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
 | Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
 
-@[simp, aesop unsafe] theorem TmₛA_var  : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rw [TmₛA]
-@[simp, aesop unsafe] theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
+-- @[simp, aesop unsafe]
+theorem TmₛA_var  : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rw [TmₛA]
+-- @[simp, aesop unsafe]
+theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
 
 example {Vec : Nat -> Type} : @TmₛA (⬝ ▹ SPi Nat (fun _ => U)) U (.app (.var .vz) 123) ⟨⟨⟩, Vec⟩ = Vec 123 := rfl
 
@@ -194,7 +196,7 @@ reduces to the type of `Vec.cons` as you would expect:
 ```
 (n : Nat) -> A -> Vec n -> Vec (n + 1)
 ``` -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def TyₚA.{u, v} : Tyₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | El         Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
@@ -221,7 +223,7 @@ reduces to the Lean type
 × ((n : Nat) -> A -> Vec n -> Vec (n + 1)) -- `Vec.cons`
 × Unit
 ``` -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def ConₚA.{u, v} : Conₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | ⬝    , _ => PUnit
 | Γ ▹ A, γₛ => ConₚA Γ γₛ × TyₚA.{u, v} A γₛ
@@ -236,7 +238,7 @@ example {Vec : Nat -> Type} {A : Type}
 /-- Compute motive type.
 
 Example: `TyₛD (SPi Nat (fun _ => U)) Vec` reduces to `(n : Nat) -> Vec n -> Type`. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def TyₛD.{u, v} : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, v} Aₛ -> Type ((max u v) + 1)
 | U, T => T -> Type (max u v)
 | SPi T Aₛ, f => (t : T) -> TyₛD (Aₛ t) (f t)
@@ -251,7 +253,7 @@ reduces to just one motive type:
 ```
 ((t : Nat) → Vec t -> Type) × Unit
 ``` -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def ConₛD.{u, v} : (Γₛ : Conₛ.{u}) -> ConₛA.{u, v} Γₛ -> Type ((max u v) + 1)
 | ⬝, _ => PUnit
 | Γ ▹ A, ⟨γ, a⟩ => ConₛD Γ γ × TyₛD A a
@@ -259,7 +261,7 @@ def ConₛD.{u, v} : (Γₛ : Conₛ.{u}) -> ConₛA.{u, v} Γₛ -> Type ((max 
 example {Vec : Nat -> Type} : ConₛD Vₛ ⟨⟨⟩, Vec⟩ = (PUnit.{2} × ((t : Nat) → Vec t -> Type)) := rfl
 
 set_option linter.unusedVariables false in
-@[aesop unsafe]
+-- @[aesop unsafe]
 def VarₛD : {Γₛ : Conₛ} -> {γₛ : ConₛA Γₛ} -> (v : Varₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (VarₛA v γₛ)
 | _ ▹ _, ⟨_, _⟩, .vz  , ⟨_,  a⟩ => a
 | _ ▹ _, ⟨_, _⟩, .vs v, ⟨γD, _⟩ => VarₛD v γD
@@ -275,7 +277,7 @@ for this is, again with `VarₛD` inlined:
 ``` -/
 -- ! TmₛD needs casts because reduction behaviour of TmₛA is broken.
 -- And for some reason TmₚD works just fine? What...
-@[aesop unsafe]
+-- @[aesop unsafe]
 def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
 | _, _, γₛ, .var v                    , γₛD => TmₛA_var.symm ▸ VarₛD v γₛD
 | _, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛA_app.symm ▸ TmₛD t γₛD u
@@ -433,18 +435,18 @@ inductive Subₛ : (Γₛ : Conₛ) -> (Δₛ : Conₛ) -> Type (u+1)
 | cons : Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ -> Subₛ Γₛ (Δₛ ▹ Aₛ)
 
 /-- Substitutes a variable `v ∈ Δₛ` with a Γₛ-term. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def SubₛVar : Varₛ Δₛ Aₛ -> Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ
 | .vz  , .cons _ t => t
 | .vs v, .cons σ _ => SubₛVar v σ
 
 /-- Applies the substitution to a term, resulting in a new term in the new context. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def SubₛTm : {Aₛ : _} -> Tmₛ Δₛ Aₛ -> Subₛ Γₛ Δₛ -> Tmₛ Γₛ Aₛ
 | _, .var v, σ => SubₛVar v σ
 | _, .app (A := _A) t u, σ => .app (SubₛTm t σ) u
 
-@[aesop unsafe]
+-- @[aesop unsafe]
 theorem SubₛTm_app : SubₛTm (Tmₛ.app t u) σ = .app (SubₛTm t σ) u := rfl
 
 /-- Point types are valid in a given sort context. Given a substitution between sort contexts,
@@ -459,13 +461,13 @@ def SubₛCon : Conₚ Δₛ -> Subₛ Γₛ Δₛ -> Conₚ Γₛ
 | Γ ▹ A, σ => SubₛCon Γ σ ▹ SubₛTy A σ
 
 /-- Increment all de brujin indices in this term by one. -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def vshift : {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> Tmₛ (Γₛ ▹ Bₛ) Aₛ
 | _, .var v => .var (.vs v)
 | _, .app (A := _A) t u => .app (vshift t) u
 
 /-- Weakens a substitution.
-@[aesop unsafe]
+-- @[aesop unsafe]
   Given a substitution `σ` which replaces all variables `Δₛ ⊢ v` with terms `Γₛ ⊢ t`,
   the weakened substitution will replace all variables `Δₛ ⊢ v` with terms `Γₛ, Aₛ ⊢ t`.
   The stored terms thus need to be shifted using `vshift`. -/
@@ -474,7 +476,7 @@ def weaken.{u} : {Γₛ Δₛ : Conₛ.{u}} -> {Aₛ : Tyₛ.{u}} -> Subₛ.{u} 
 | Γₛ, Δₛ ▹ Bₛ, Aₛ, .cons σ t => Subₛ.cons (weaken σ) (vshift t)
 
 /-- Identity substitution. Does nothing (replaces all variables by itself). -/
-@[aesop unsafe]
+-- @[aesop unsafe]
 def Subₛ.id : (Γₛ : Conₛ) -> Subₛ Γₛ Γₛ
 | ⬝ => .nil
 | Γₛ ▹ _ => .cons (weaken (Subₛ.id Γₛ)) (.var .vz)
@@ -498,13 +500,13 @@ def SubₛS : (σ : Subₛ Γₛ Δₛ) -> ConₛS Γₛ γₛ γₛD -> ConₛS
 | .cons σ t, γₛD => ⟨SubₛS σ γₛD, TmₛS t γₛD⟩
 
 /-- It is impossible to have a term in an empty context. -/
-@[aesop safe]
+-- @[aesop safe]
 theorem Tmₛ_emptyCtx (t : Tmₛ ⬝ A) : False := by
 induction t with
 | var v => cases v
 | app _ _ ih => exact ih
 
-@[aesop safe]
+-- @[aesop safe]
 theorem Subₛ_emptyCtx : Subₛ ⬝ (⬝ ▹ A) -> False
 | .cons _ t => Tmₛ_emptyCtx t
 
@@ -528,57 +530,19 @@ end Examples
 
 /- ### Lemma 12 -/
 
-@[aesop unsafe]
+-- @[aesop unsafe]
 theorem VarₛA_Subₛ {σ : Subₛ Γₛ Δₛ} {v : Varₛ Δₛ Aₛ} : TmₛA (SubₛVar v σ) γₛ = VarₛA v (SubₛA σ γₛ) := by
   induction v with
   | vz => let .cons σ t := σ; rfl
   | vs v ih => let .cons σ _ := σ; apply ih
 
-@[aesop unsafe]
+-- @[aesop unsafe]
 theorem TmₛA_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} : TmₛA (SubₛTm t σ) γₛ = TmₛA t (SubₛA σ γₛ) := by
   induction t with
   | var v => rw [TmₛA]; exact VarₛA_Subₛ
   | app t u ih => simp_all only [SubₛTm, TmₛA_app]
 
--- Now the same stuff, but for -D instead of -A
-
-@[aesop unsafe]
-theorem VarₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {v : Varₛ Δₛ Aₛ} : VarₛD v (SubₛD σ γₛ) = VarₛA_Subₛ ▸ TmₛD (SubₛVar v σ) γₛ := by
-  induction v with
-  | vz => let .cons σ t := σ; rfl
-  | vs v ih => let .cons σ _ := σ; apply ih
-
-@[aesop unsafe]
-theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
-  : TmₛD t (SubₛD σ γₛD) = TmₛA_Subₛ ▸ TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD := by
-  induction t with
-  | @var Bₛ v =>
-    rw [TmₛD]
-    conv => rhs; simp only [SubₛTm]
-    rw [VarₛD_Subₛ, Eq.cast_trans_dep]
-  | @app T Aₛ t u ih =>
-    have ih := Eq.cast_apply_u
-      (h := Eq.symm <| @TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t)
-      (hu := fun u => Eq.symm <| Eq.apply_u (@TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t) u)
-      ih
-      u
-    rw [TmₛD]
-    simp [SubₛTm_app]
-    rw [TmₛD]
-    have h₃ : TmₛA (SubₛTm t σ) γₛ u = TmₛA (Tmₛ.app t u) (SubₛA σ γₛ) := by simp only [TmₛA, TmₛA_Subₛ]
-    rw [Eq.cast_trans_dep (h₃ := h₃)]
-    -- aesop?
-    rw [ih]
-    have {α} {a b : α} {h : a = b} : h.symm.symm = h := rfl
-    rw [this]
-    rw [Eq.cast_trans_dep (h₃ := h₃)]
-    exact Eq.apply_u TmₛA_Subₛ u
-
-theorem TmₛD_Subₛ' {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
-  : TmₛA_Subₛ ▸ TmₛD t (SubₛD σ γₛD) = TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD
-  := by rw [TmₛD_Subₛ, eq_symm_cancel]
-
-@[aesop unsafe]
+-- @[aesop unsafe]
 theorem TyₚA_Subₛ {σ : Subₛ Γₛ Δₛ} : TyₚA.{u, v} (SubₛTy A σ) γₛ = TyₚA.{u, v} A (SubₛA σ γₛ) := by
   induction A with
   | El Self =>
@@ -613,7 +577,44 @@ theorem SubₛA_id : SubₛA (Subₛ.id Γₛ) γₛ = γₛ := by
     let ⟨γₛ, aₛ⟩ := γₛ
     simp only [Subₛ.id, SubₛA, TmₛA, VarₛA, SubₛA_weaken, ih]
 
-@[aesop unsafe]
+-- Now the same stuff, but for -D instead of -A
+
+-- @[aesop unsafe]
+theorem VarₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {v : Varₛ Δₛ Aₛ} : VarₛD v (SubₛD σ γₛ) = VarₛA_Subₛ ▸ TmₛD (SubₛVar v σ) γₛ := by
+  induction v with
+  | vz => let .cons σ t := σ; rfl
+  | vs v ih => let .cons σ _ := σ; apply ih
+
+-- @[aesop unsafe]
+theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
+  : TmₛD t (SubₛD σ γₛD) = TmₛA_Subₛ ▸ TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD := by
+  induction t with
+  | @var Bₛ v =>
+    rw [TmₛD]
+    conv => rhs; simp only [SubₛTm]
+    rw [VarₛD_Subₛ, Eq.cast_trans_dep]
+  | @app T Aₛ t u ih =>
+    have ih := Eq.cast_apply_u
+      (h := Eq.symm <| @TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t)
+      (hu := fun u => Eq.symm <| Eq.apply_u (@TmₛA_Subₛ Γₛ Δₛ (SPi T Aₛ) γₛ σ t) u)
+      ih
+      u
+    rw [TmₛD]
+    simp [SubₛTm_app]
+    rw [TmₛD]
+    have h₃ : TmₛA (SubₛTm t σ) γₛ u = TmₛA (Tmₛ.app t u) (SubₛA σ γₛ) := by simp only [TmₛA, TmₛA_Subₛ]
+    rw [Eq.cast_trans_dep (h₃ := h₃)]
+    rw [ih]
+    have {α} {a b : α} {h : a = b} : h.symm.symm = h := rfl
+    rw [this]
+    rw [Eq.cast_trans_dep (h₃ := h₃)]
+    exact Eq.apply_u TmₛA_Subₛ u
+
+theorem TmₛD_Subₛ' {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
+  : TmₛA_Subₛ ▸ TmₛD t (SubₛD σ γₛD) = TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD
+  := by rw [TmₛD_Subₛ, eq_symm_cancel]
+
+-- @[aesop unsafe]
 theorem TmₛD_shift {γₛ : ConₛA Γₛ} {aₛ : TyₛA Aₛ} {γₛD : ConₛD Γₛ γₛ} {aₛD : TyₛD Aₛ aₛ}
   : TmₛD (Γₛ := Γₛ ▹ Aₛ) (γₛ := ⟨γₛ, aₛ⟩) (vshift t) (γₛD, aₛD) = TmₛA_shift.symm ▸ TmₛD t γₛD
   := by induction t with
@@ -631,14 +632,88 @@ theorem TmₛD_shift {γₛ : ConₛA Γₛ} {aₛ : TyₛA Aₛ} {γₛD : Con�
       have h₃ : TmₛA t γₛ u = TmₛA (Tmₛ.app (vshift t) u) (γₛ, aₛ) := by simp only [TmₛA_app, TmₛA_shift]
       rw [Eq.cast_trans_dep (h₃ := h₃), Eq.cast_trans_dep]
 
+-- set_option pp.proofs.withType true in
+-- set_option pp.proofs false in
+
 theorem SubₛD_weaken {σ : Subₛ Γₛ Δₛ} {γₛD : ConₛD Γₛ γₛ}
   : SubₛD (Γₛ := Γₛ ▹ Aₛ) (γₛ := ⟨γₛ, aₛ⟩) (weaken σ) ⟨γₛD, aₛD⟩ = SubₛA_weaken.symm ▸ SubₛD σ γₛD
   := by induction σ with
   | nil => rfl
-  | @cons Γₛ' Δₛ σ t ih =>
-    have : @weaken Γₛ (Γₛ' ▹ Δₛ) Aₛ (Subₛ.cons σ t) = Subₛ.cons (weaken σ) (vshift t) := by rw [weaken]
-    sorry
+  | @cons Δₛ Bₛ σ t ih =>
+    have h₁ : @weaken Γₛ (Δₛ ▹ Bₛ) Aₛ (Subₛ.cons σ t) = Subₛ.cons (weaken σ) (vshift t) := by rw [weaken]
+    have h1' : SubₛA (.cons (weaken σ) (vshift t)) (γₛ, aₛ) = SubₛA (weaken (.cons σ t)) (γₛ, aₛ) := by rw [h₁]
+    have h₂ {Γ₁ Γ₂} {σ σ' : Subₛ Γ₁ Γ₂} {γₛ} {γₛD : ConₛD Γ₁ γₛ} (h : σ = σ') : SubₛD σ γₛD = h ▸ SubₛD σ' γₛD := by cases h; rfl
+    rw [h₂ h₁]
+    rw [SubₛD]
+    rw [ih]
+    simp [TmₛD_shift]
+    rw [SubₛD]
+    generalize h₁.symm = h1
+    generalize (@SubₛA_weaken Γₛ Δₛ γₛ Aₛ aₛ σ).symm = h2
+    generalize (@TmₛA_shift Γₛ Bₛ t γₛ Aₛ aₛ).symm = h3
+    generalize (@SubₛA_weaken Γₛ (Δₛ ▹ Bₛ) γₛ Aₛ aₛ (Subₛ.cons σ t)).symm = h4
+    generalize SubₛD σ γₛD = x
+    generalize TmₛD t γₛD = y
+    -- goal here is ⊢ h1 ▸ (h2 ▸ x, h3 ▸ y) = h4 ▸ (x, y)
+
+    have {A B : Sort 1} {D : B -> Sort 1} {f : A -> B} {a₁ a₂ : A} {z : D (f a₁)}
+      {h1 : a₁ = a₂}
+      {h1' : f a₁ = f a₂}
+      -- {z : ConₛD (Δₛ ▹ Bₛ) (SubₛA (.cons (weaken σ) (vshift t)) (γₛ, aₛ))}
+      : @Eq (D (f a₂)) (h1 ▸ z) (h1' ▸ z) := by cases h1; rfl
+    -- have := this (D := ConₛD )
     -- rw [this]
+
+    have fold₁ : (ConₛD Δₛ (SubₛA σ γₛ) × TyₛD Bₛ (TmₛA t γₛ)) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (weaken (Subₛ.cons σ t)) (γₛ, aₛ)) := by simp only [SubₛA_weaken, SubₛA, ConₛD]
+    have fold₂ : (ConₛD Δₛ (SubₛA (weaken σ) (γₛ, aₛ)) × TyₛD Bₛ (TmₛA (vshift t) (γₛ, aₛ))) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (Subₛ.cons (weaken σ) (vshift t)) (γₛ, aₛ)) := by simp only [SubₛA_weaken, SubₛA, ConₛD]
+    have h     : (ConₛD Δₛ (SubₛA (weaken σ) (γₛ, aₛ)) × TyₛD Bₛ (TmₛA (vshift t) (γₛ, aₛ))) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (weaken (Subₛ.cons σ t)) (γₛ, aₛ)) := by simp [fold₂, h1, h1', SubₛA, ConₛD]
+
+    have pain'
+      {A} {Dx : A -> Sort _} {a₁ a₂ : A} {x : Dx a₁} {hx : a₁ = a₂}
+      {B} {Dy : B -> Sort _} {b₁ b₂ : B} {y : Dy b₁} {hy : b₁ = b₂}
+      {C} {Dz : C -> Sort _} {c₁ c₂ : C}
+      {fold₁ : (Dx a₁ × Dy b₁) = Dz c₁}
+      {h : (Dx a₂ × Dy b₂) = (Dz c₁)}
+      : @Eq (Dz c₁) (h ▸ (hx ▸ x, hy ▸ y)) (fold₁ ▸ (x, y))
+      := by cases hx; cases hy; rfl
+    have pain'_incarnate := pain'
+      (Dx := ConₛD Δₛ) (a₁ := SubₛA σ γₛ) (a₂ := SubₛA (weaken σ) (γₛ, aₛ)) (x := x) (hx := h2)
+      (Dy := TyₛD Bₛ)  (b₁ := TmₛA t γₛ)  (b₂ := TmₛA  (vshift t) (γₛ, aₛ)) (y := y) (hy := h3)
+      (Dz := ConₛD (Δₛ ▹ Bₛ)) (c₁ := SubₛA (weaken (.cons σ t)) (γₛ, aₛ)) (c₂ := SubₛA (.cons (weaken σ) (vshift t)) (γₛ, aₛ))
+      (fold₁ := fold₁)
+      (h := h)
+    have aaaa := h1
+    have bbbb := h
+    -- have cccc := h'
+    -- rw [pain'_incarnate]
+
+    have pain
+      {A} {Dx : A -> Sort _} {a₁ a₂ : A} {x : Dx a₁} {hx : a₁ = a₂}
+      {B} {Dy : B -> Sort _} {b₁ b₂ : B} {y : Dy b₁} {hy : b₁ = b₂}
+      {C} {Dz : C -> Sort _} {c₁ c₂ : C} {hz : c₁ = c₂}
+      {fold₂ : (Dx a₂ × Dy b₂) = Dz c₂}
+      {fold₁ : (Dx a₁ × Dy b₁) = Dz c₁}
+      : @Eq (Dz c₁) (hz ▸ fold₂ ▸ (hx ▸ x, hy ▸ y)) (fold₁ ▸ (x, y))
+      := by
+        cases hx
+        cases hy
+        cases hz
+        rfl
+    have fold₁ : (ConₛD Δₛ (SubₛA σ γₛ) × TyₛD Bₛ (TmₛA t γₛ)) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (weaken (Subₛ.cons σ t)) (γₛ, aₛ)) := by simp only [SubₛA_weaken, SubₛA, ConₛD]
+    have fold₂ : (ConₛD Δₛ (SubₛA (weaken σ) (γₛ, aₛ)) × TyₛD Bₛ (TmₛA (vshift t) (γₛ, aₛ))) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (Subₛ.cons (weaken σ) (vshift t)) (γₛ, aₛ)) := by simp only [SubₛA_weaken, SubₛA, ConₛD]
+    have pain_incarnate := pain
+      (Dx := ConₛD Δₛ) (a₁ := SubₛA σ γₛ) (a₂ := SubₛA (weaken σ) (γₛ, aₛ)) (x := x) (hx := h2)
+      (Dy := TyₛD Bₛ)  (b₁ := TmₛA t γₛ)  (b₂ := TmₛA  (vshift t) (γₛ, aₛ)) (y := y) (hy := h3)
+      (Dz := ConₛD (Δₛ ▹ Bₛ)) (c₁ := SubₛA (weaken (.cons σ t)) (γₛ, aₛ)) (c₂ := SubₛA (.cons (weaken σ) (vshift t)) (γₛ, aₛ))
+        (hz := h1'.symm)
+      (fold₁ := fold₁)
+      (fold₂ := fold₂)
+    have : Eq.symm (Eq.symm h1') = h1' := rfl
+    rw [this] at pain_incarnate
+
+    -- rw [eq_symm_cancel] at pain_incarnate
+    -- rw [<- pain_incarnate]
+    sorry
     done
 
 theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γₛD = SubₛA_id ▸ γₛD := by
@@ -653,6 +728,8 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     rw [SubₛD_weaken]
     rw [@ih]
     sorry
+
+-- #exit
 
 
 -- theorem foob : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ Aₛ) -> vshift (SubₛVar v σ) = SubₛVar v (weaken (Aₛ := Bₛ) σ) := by
@@ -677,7 +754,8 @@ theorem foob : {Γₛ : Conₛ} -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (weake
   rw [weaken]
 
   simp [Subₛ.id, SubₛVar, vshift, weaken]
-  exact ih
+  -- exact ih
+  sorry
   done
 
 -- theorem foot : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (t : Tmₛ Γₛ Aₛ) -> vshift (SubₛTm t σ) = SubₛTm t (weaken (Aₛ := Bₛ) σ)
@@ -699,7 +777,8 @@ theorem foo : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ
 | Γₛ ▹ Bₛ, .cons σ s, .vs v => by
   simp [SubₛVar, vshift, weaken]
   let v' := SubₛVar v σ
-  have ih := foo Γₛ σ v'
+  -- have ih := foo Γₛ σ v'
+  sorry
 
   done
 
@@ -743,9 +822,10 @@ theorem SubₛTm_id : (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
     match Δₛ with
     | .nil =>
       rw [Subₛ.id]
-      have := congr_arg (vshift (Bₛ := Aₛ)) ih
-      rw [vshift] at this
-      rw [Subₛ.id] at ih
+      -- have := congr_arg (vshift (Bₛ := Aₛ)) ih
+      -- sorry
+      -- rw [vshift] at this
+      -- rw [Subₛ.id] at ih
 
       -- done
       sorry
@@ -1026,12 +1106,12 @@ def elimTyₛ : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, u
   -- have (ttt : TmₛA a (mkConₛ (Ω:=Ω))) : TyₛS.{0, 1} U (TmₛD a ωₛD ( (TmₚA (aux ▸ ttt) (mkConₚ (Ω:=Ω))))) = TmₛD a ωₛD ttt := sorry
   -- have (t : TmₛA a (@mkConₛ Ωₛ Ω)) : TyₛS U (TmₛD a ωₛD (TmₚA t (@mkConₚ Ωₛ Ω))) = sorry := sorry
 
-  fun (t : TmₛA a mkConₛ) => by
+  -- fun (t : TmₛA a mkConₛ) => by
     -- ⊢ TmₛD a ωₛD t
 
-    let ret := TmₚD t ωD
-    exact ret
-    -- sorry
+    -- let ret := TmₚD t ωD
+    -- exact ret
+    sorry
 | SPi T Aₛ, t =>
   fun τ => by
     let res := elimTyₛ (.app t τ)
@@ -1058,8 +1138,8 @@ example : TmₛA t (SubₛA σ (mkConₛ (Ω:=Ω))) = TmₛA (SubₛTm t σ) (mk
 
 #check TmₛD_Subₛ
 -- Transport hell
-theorem lemma20 (σ : Subₛ Ωₛ Γₛ) (t : Tmₛ Γₛ Aₛ) : elimTyₛ ωₛD (SubₛTm t σ) = TmₛA_Subₛ ▸ TmₛD_Subₛ' ▸ TmₛS t (elimConₛ' ωₛD σ)
-  := sorry
+-- theorem lemma20 (σ : Subₛ Ωₛ Γₛ) (t : Tmₛ Γₛ Aₛ) : elimTyₛ ωₛD (SubₛTm t σ) = TmₛA_Subₛ ▸ TmₛD_Subₛ' ▸ TmₛS t (elimConₛ' ωₛD σ)
+--   := sorry
 
 theorem elimTyₚ (t : Tmₚ Ω A) : TyₚS A (elimConₛ ωₛD) (TmₚA t (mkConₚ (Ω:=Ω))) (TmₚD t ωD) := by
   induction A with
@@ -1068,8 +1148,8 @@ theorem elimTyₚ (t : Tmₚ Ω A) : TyₚS A (elimConₛ ωₛD) (TmₚA t (mkC
     -- rw [mkConₛ_coherent]
     unfold mkConₚ
     have h := mkConₚ_coherent t (Subₚ.id Ω)
-    rw [h]
-    conv => lhs; rw [h]
+    -- rw [h]
+    -- conv => lhs; rw [h]
     sorry
   | PPi   T    Rest ihRest => sorry
   | PFunc Self Rest ihRest => sorry
@@ -1103,7 +1183,7 @@ namespace Example
 
   def Vec.recs {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : ConₛS Vₛ mkConₛ dₛ := elimConₛ dₛ -- all recs for the mutual block
   def Vec.rec' {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₛS (SPi Nat fun _ => U) (TmₛA (Tmₛ.var vz) mkConₛ) (TmₛD (Tmₛ.var vz) dₛ) := elimTyₛ (Ω := V A) dₛ (.var .vz)
-  def Vec.rec.nil {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₚS _ _ _ _ := elimTyₚ dₛ (.var (.vs .vz))
+  -- def Vec.rec.nil {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₚS _ _ _ _ := elimTyₚ dₛ (.var (.vs .vz))
   -- theorem Vec.rec.cons := elimₚ
   #check Vec.rec
 end Example
