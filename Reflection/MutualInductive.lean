@@ -1,6 +1,7 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 import Reflection.Util.EqHelpers
 
+namespace Reflection.MutualInductive
 /-
   Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
   Agda source for the above lives at https://bitbucket.org/javra/inductive-families
@@ -50,7 +51,6 @@ inductive Tmₛ.{u} : Conₛ.{u} -> Tyₛ.{u} -> Type (u+1)
 Γ ⊢ₛ f arg : A arg
 ``` -/
 | app : Tmₛ Γ (SPi T A) -> (arg : T) -> Tmₛ Γ (A arg)
--- infixl:50 " @ " => Tmₛ.app
 
 -- -- ! This fails:
 -- gen_injective_theorems% Tmₛ
@@ -73,10 +73,8 @@ then `Even @ 123` is a term in universe `U`. -/
 inductive Tyₚ : Conₛ -> Type (u+1)
 | El : Tmₛ Γₛ U -> Tyₚ Γₛ
 | PPi   : (T : Type u) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
-/-- Allows us to introduce nested binders `(x : Self ...) -> ...`.
-  `PFunc` is non-dependent, because it makes no sense to have `(self : Self ...) -> Self self`.
-  (...but once you have ind-ind or ind-rec, it might be sensible?) -/
 | PFunc : Tmₛ Γₛ U   ->       Tyₚ Γₛ  -> Tyₚ Γₛ
+-- | PInf -- https://arxiv.org/pdf/2006.11736.pdf search for "infinitary" (page 5).
 open Tyₚ
 
 /-- List of constructor descriptions.
@@ -201,6 +199,10 @@ def TyₚA.{u, v} : Tyₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | El         Self, γₛ => TmₛA Self γₛ
 | PPi   T    Rest, γₛ => (arg : T)    -> TyₚA (Rest arg) γₛ
 | PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
+
+-- def
+def test : Tyₚ (⬝ ▹ U) := PPi Unit (fun _ => PPi Nat (fun _ => El (.var .vz)))
+#reduce TyₚA test
 
 example {Vec : Nat -> Type} {_A : Type}
   : TyₚA V_nil ⟨⟨⟩, Vec⟩
@@ -426,8 +428,6 @@ example : @ConₚS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, Q⟩ (V A) ⟨⟨⟩, eli
   )
   := rfl
 
-#check ConₚD
-
 -- # Substitutions
 
 inductive Subₛ : (Γₛ : Conₛ) -> (Δₛ : Conₛ) -> Type (u+1)
@@ -634,6 +634,8 @@ theorem TmₛD_shift {γₛ : ConₛA Γₛ} {aₛ : TyₛA Aₛ} {γₛD : Con�
 
 -- set_option pp.proofs.withType true in
 -- set_option pp.proofs false in
+
+#check SubₛA_weaken
 
 theorem SubₛD_weaken {σ : Subₛ Γₛ Δₛ} {γₛD : ConₛD Γₛ γₛ}
   : SubₛD (Γₛ := Γₛ ▹ Aₛ) (γₛ := ⟨γₛ, aₛ⟩) (weaken σ) ⟨γₛD, aₛD⟩ = SubₛA_weaken.symm ▸ SubₛD σ γₛD
@@ -1133,6 +1135,8 @@ def elimConₛ (ωₛD : ConₛD Ωₛ (@mkConₛ Ωₛ Ω)) : ConₛS Ωₛ mkC
     rw [h₁, h₂] at res
     exact res
 
+#print axioms elimConₛ
+
 example : TmₛA t (SubₛA σ (mkConₛ (Ω:=Ω))) = TmₛA (SubₛTm t σ) (mkConₛ (Ω:=Ω)) := by
   sorry
 
@@ -1178,12 +1182,15 @@ namespace Example
   def Vec.cons (A : Type) : (n : Nat) -> A -> Vec A n -> Vec A (n+1) := mkTyₚ (Ω := V A) (.var .vz) -- de brujin index 0
 
   #reduce Vec String 0
+  #reduce Vec.nil
   #reduce Vec.nil Nat
+  #reduce Vec.cons
   #reduce Vec.cons Nat 0 123 (Vec.nil Nat)
 
   def Vec.recs {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : ConₛS Vₛ mkConₛ dₛ := elimConₛ dₛ -- all recs for the mutual block
   def Vec.rec' {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₛS (SPi Nat fun _ => U) (TmₛA (Tmₛ.var vz) mkConₛ) (TmₛD (Tmₛ.var vz) dₛ) := elimTyₛ (Ω := V A) dₛ (.var .vz)
   -- def Vec.rec.nil {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₚS _ _ _ _ := elimTyₚ dₛ (.var (.vs .vz))
   -- theorem Vec.rec.cons := elimₚ
+  #check Vec.recs
   #check Vec.rec
 end Example

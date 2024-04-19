@@ -1,5 +1,8 @@
 import Reflection.MutualInductive
 
+namespace Reflection.IndexErasure
+
+open Reflection MutualInductive
 open Tyₛ Tyₚ Varₛ Varₚ
 
 -- # Erasure
@@ -8,8 +11,6 @@ inductive Example.VecE : Type u where
 | nil : VecE
 | cons : Nat -> String -> VecE -> VecE
 
-
--- abbrev ETyₛ := Unit
 def eTyₛ : Tyₛ.{u} -> Tyₛ.{u}
 | _ => U
 
@@ -91,7 +92,7 @@ def gConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u} (eConₛ Γ�
 | ⬝      , ⟨⟩         => ⬝
 | Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (gConₛ Γₛ γₛE) (gTyₛ Aₛ aₛE)
 
-abbrev GConₛA.{u, v} Γₛ γₛE := ConₛA.{u, v} (gConₛ Γₛ γₛE)
+abbrev GConₛA (Γₛ : Conₛ.{u}) (γₛE : EConₛA Γₛ) := ConₛA (gConₛ Γₛ γₛE)
 
 /-- VecG : Nat -> VecE -> Type -/
 example : gConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
@@ -140,6 +141,7 @@ def gTyₚ (γₛE : ConₛA.{0} (eConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : T
 
 abbrev GTyₚA (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) (aE : TyₚA (eTyₚ A) γₛE) : Type _ := TyₚA (gTyₚ γₛE A aE) γₛG
 
+set_option pp.universes true in
 def gConₚ (γₛE : ConₛA (eConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (eConₚ Γ) γₛE) -> Conₚ (gConₛ Γₛ γₛE)
 | ⬝, ⟨⟩ => ⬝
 | Γ ▹ A, ⟨γE, aE⟩ => gConₚ γₛE Γ γE ▹ gTyₚ γₛE A aE
@@ -168,6 +170,7 @@ def gTmₚ (γₛE : ConₛA (eConₛ Γₛ)) (γE : ConₚA (eConₚ Γ) γₛE
 abbrev GTmₚ (Γ : Conₚ Γₛ) (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₚE : ConₚA (eConₚ Γ) γₛE) (tE : ETmₚ Γ A) : Type _
   := Tmₚ (gConₚ γₛE Γ γₚE) (gTyₚ γₛE A (TmₚA tE γₚE))
 
+set_option pp.fieldNotation false in
 section
 open Example
 #reduce gTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var .vz)
@@ -179,7 +182,38 @@ end
   # Lowering
 -/
 
+@[instance] def IsSimpleTy.decide' (Aₛ : Tyₛ) : Decidable (Aₛ = U)
+  := match h : Aₛ with
+    | U => .isTrue (by cases h; rfl)
+    | SPi .. => .isFalse (by simp only [h, not_false_eq_true])
+@[instance] def IsSimple.decide' : (Γₛ : Conₛ) -> Decidable (Γₛ = eConₛ Γₛ)
+| ⬝ => .isTrue rfl
+| Γₛ ▹ Aₛ =>
+  match hAₛ : Aₛ with
+  | U =>
+    match decide' Γₛ with
+    | .isTrue p => by
+      rw [eConₛ]
+      rw [<- p]
+      exact .isTrue rfl
+    | .isFalse p => by
+      cases hAₛ
+      simp_all [eConₛ]
+      exact inferInstance
+  | SPi _ _ => .isFalse (by simp only [eConₛ, Conₛ.ext.injEq, and_false, not_false_eq_true])
+/-- If the type is already simple, we don't need to lower it. -/
+def IsSimpleTy (Aₛ : Tyₛ) : Prop := Aₛ = U
+/-- If the type is already simple, we don't need to lower it. -/
+def IsSimple (Γₛ : Conₛ) : Prop := Γₛ = eConₛ Γₛ
+@[instance] def IsSimpleTy.decide (Aₛ : Tyₛ) : Decidable (IsSimpleTy Aₛ) := by unfold IsSimpleTy; exact inferInstance
+@[instance] def IsSimple.decide (Γₛ : Conₛ) : Decidable (IsSimple Γₛ) := by unfold IsSimple; exact inferInstance
+
 -- ## Lowering Sorts
+
+-- abbrev LTyₛA.{u, v, w} (Aₛ : Tyₛ.{max u v}) : Type ((max u v w) + 1) :=
+--   if Aₛ = U
+--     then TyₛA Aₛ
+--     else (aₛE : ETyₛA.{max u v, v} Aₛ) × GTyₛA.{max u v, w} Aₛ aₛE
 
 abbrev LTyₛA.{u, v, w} (Aₛ : Tyₛ.{max u v}) : Type ((max u v w) + 1) := (aₛE : ETyₛA.{max u v, v} Aₛ) × GTyₛA.{max u v, w} Aₛ aₛE
 abbrev LConₛA (Γₛ : Conₛ)                            : Type _ := (γₛE : EConₛA Γₛ) × GConₛA Γₛ γₛE
@@ -195,22 +229,15 @@ def lTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (eConₛ Γₛ)) (t
 def lTmₛA (γₛE : ConₛA.{0, 0} (eConₛ Γₛ)) (γₛG : ConₛA (gConₛ Γₛ γₛE)) (T : Tmₛ Γₛ U) : Type _
   := @Sigma (ETmₛA T γₛE) (GTmₛA T γₛE γₛG)
 
+set_option pp.universes true in
+
 /-- Construct new inductive types. -/
-def lConₛA : (Γₛ : Conₛ) -> (Γₚ : Conₚ Γₛ) -> LConₛA Γₛ
+def lConₛA : (Γₛ : Conₛ) -> (Γₚ : Conₚ Γₛ) -> LConₛA.{0,0} Γₛ
 | Γₛ, Γₚ =>
-  -- let γₛE : EConₛA Γₛ     := mkConₛ (Ω := eConₚ Γₚ)
-  -- let γₛG : GConₛA Γₛ γₛE := mkConₛ (Ω := gConₚ γₛE Γₚ)
+  let γₛE : EConₛA Γₛ     := mkConₛ (Ω := eConₚ Γₚ)
+  let γₛG : GConₛA Γₛ γₛE := mkConₛ (Ω := gConₚ γₛE Γₚ)
   -- ⟨γₛE, γₛG⟩
   sorry -- the above works, modulo universe shenanigans
-
-section
-  open Example
-  example : LConₛA Vₛ = ((γₛE : PUnit.{2} × Type) × (PUnit.{2} × (Nat → γₛE.snd → Type))) := rfl
-  example : LConₛA Vₛ := ⟨⟨⟨⟩, VecE⟩, ⟨⟨⟩, VecG⟩⟩ -- TODO: construct these `LConₛA Vₛ := ⟨mkConₛ, mkConₛ⟩`
-  /-- `"Vec 123" : "U"` becomes `⟨"VecE", "VecG 123"⟩ : "U" × "VecE -> U"` -/
-  example : lTmₛ  (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩            (.app (.var .vz) 123) = ⟨.var .vz, .app (.var .vz) 123⟩ := rfl
-  example : lTmₛA (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ (.app (.var .vz) 123) = @Sigma VecE (VecG 123)          := rfl
-end
 
 -- ## Lowering Points
 
@@ -237,29 +264,36 @@ def lTmₚA (γₛE : ConₛA (eConₛ Γₛ)) (γₛG : ConₛA (gConₛ Γₛ 
     rw [TmₛA] at g
     exact ⟨TmₚA (eTmₚ t) γE, g⟩
 
-open Example
-example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
-  ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
-  (.var (.vs .vz))
-  = ⟨VecE.nil, VecG.nil⟩ := rfl
+section
+  open Example
+  -- Sorts
+  example : LConₛA Vₛ = ((γₛE : PUnit.{2} × Type) × (PUnit.{2} × (Nat → γₛE.snd → Type))) := rfl
+  example : LConₛA Vₛ := ⟨⟨⟨⟩, VecE⟩, ⟨⟨⟩, VecG⟩⟩
+  /-- `"Vec 123" : "U"` becomes `⟨"VecE", "VecG 123"⟩ : "U" × "VecE -> U"` -/
+  example : lTmₛ  (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩            (.app (.var .vz) 123) = ⟨.var .vz, .app (.var .vz) 123⟩ := rfl
+  example : lTmₛA (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ (.app (.var .vz) 123) = @Sigma VecE (VecG 123)          := rfl
 
-example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
-  ⟨⟨⟩, VecE⟩                  ⟨⟨⟩, VecG⟩
-  ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
-  (
-    let asdf1 : Tmₚ (V String) (PPi String fun _x => PFunc (.app (Tmₛ.var vz) 0) (El _)) := .app (.var .vz) 0
-    let asdf2 : Tmₚ (V String) (                     PFunc (.app (Tmₛ.var vz) 0) (El _)) := .app asdf1 "" -- ! if you inline `asdf1` it breaks
-    let asdf3 : Tmₚ (V String) (                                                 (El _)) := .appr asdf2 (.var (.vs .vz))
-    asdf3 -- ! if you inline asdf3 is breaks as well
-  )
-  = ⟨VecE.cons 0 "" VecE.nil, VecG.cons 0 "" VecE.nil VecG.nil⟩
-  := rfl
+  -- Points
+  example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
+    ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
+    (.var (.vs .vz))
+    = ⟨VecE.nil, VecG.nil⟩ := rfl
+  example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
+    ⟨⟨⟩, VecE⟩                  ⟨⟨⟩, VecG⟩
+    ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ ⟨⟨⟨⟩, VecG.nil⟩, VecG.cons⟩
+    (
+      let asdf1 : Tmₚ (V String) (PPi String fun _x => PFunc (.app (Tmₛ.var vz) 0) (El _)) := .app (.var .vz) 0
+      let asdf2 : Tmₚ (V String) (                     PFunc (.app (Tmₛ.var vz) 0) (El _)) := .app asdf1 "" -- ! if you inline `asdf1` it breaks
+      let asdf3 : Tmₚ (V String) (                                                 (El _)) := .appr asdf2 (.var (.vs .vz))
+      asdf3 -- ! if you inline asdf3 is breaks as well
+    )
+    = ⟨VecE.cons 0 "" VecE.nil, VecG.cons 0 "" VecE.nil VecG.nil⟩
+    := rfl
+end
 
 
 
-
-
-/- # Reconstruction
+/- # Reconstruction for Mutually Inductive Types
   Given `P : Vec n -> Prop`, We can derive `P' : @Sigma VecE (VecG n) -> Prop`.
   And now given `prf' : P' ⟨vE, vG⟩`, we need to find `?prf : P v`.
 
@@ -271,123 +305,164 @@ example : lTmₚA (Γₛ := Vₛ) (Γ := V String)
 -- This is just `rTyₛA {Aₛ} _ ≣ TyₛA Aₛ` ?
 def rTyₛA : {Aₛ : Tyₛ} -> LTyₛA.{0,0,0} Aₛ -> TyₛA Aₛ
 | U      , _      => Type
-| SPi _ _, ⟨E, G⟩ => fun x => rTyₛA ⟨E, G x⟩
+| SPi X _, ⟨E, G⟩ => fun (x : X) => rTyₛA ⟨E, G x⟩
 
 def rConₛA : {Γₛ : Conₛ} -> LConₛA Γₛ -> ConₛA Γₛ
 | ⬝    , ⟨⟨⟩, ⟨⟩⟩ => ⟨⟩
 | _ ▹ _, ⟨⟨γE, aE⟩, ⟨γG, aG⟩⟩ => ⟨rConₛA ⟨γE, γG⟩, rTyₛA ⟨aE, aG⟩⟩
 
-
--- def LTyₚA (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) : Type _ := (e : ETyₚA A γₛE) × GTyₚA A γₛE γₛG e
-
 -- * I think the idea should be to provide an eliminator for L, which is exactly as powerful
 -- * as the original eliminator.
 
-#check TyₚD
-def rTyₛD : (Aₛ : Tyₛ) -> (aₛE : ETyₛA Aₛ) -> TyₛD (eTyₛ Aₛ) aₛE
-| U, τ => sorry
+def rTyₛD : (Aₛ : Tyₛ) -> (aₛL : LTyₛA Aₛ) -> (eD : TyₛD (eTyₛ Aₛ) aₛL.fst) × TyₛD (gTyₛ Aₛ aₛL.fst) aₛL.snd
+| U       , τ => sorry
 | SPi X Bₛ, f => sorry
+-- def rTyₛD : (Aₛ : Tyₛ) -> (aₛE : ETyₛA Aₛ) -> (aₛG : GTyₛA Aₛ aₛE) -> (eD : TyₛD (eTyₛ Aₛ) aₛE) × TyₛD (gTyₛ Aₛ aₛE) aₛG
+-- | U       , τ => sorry
+-- | SPi X Bₛ, f => sorry
+
+def rEConₛD : (Γₛ : Conₛ) -> (γₛE : EConₛA Γₛ) -> ConₛD (eConₛ Γₛ) γₛE
+| ⬝, ⟨⟩ => ⟨⟩
+| Γₛ ▹ Aₛ, ⟨a, b⟩ => ⟨rEConₛD Γₛ a, rTyₛD Aₛ b⟩
+
+#check mkConₛ
+#check elimConₛ
 
 def rTyₚA : {A : Tyₚ Γₛ} -> LTyₚA A γₛL -> TyₚA A γₛ
 | El T, ⟨aE, aG⟩ =>
   -- aE : ETyₚA (El T) γₛL.fst
   -- aG : GTyₚA (El T) γₛL.fst γₛL.snd aE
   -- elimE (motive := (aE : ETyₚA (El T) γₛL.fst) -> GTyₚA (El T) γₛL.fst γₛL.snd aE -> TyₚA (El T) γₛ)
-  let eDₛ : ConₛD (eConₛ Γₛ) γₛL.fst := sorry
+  let eDₛ : ConₛD (eConₛ Γₛ) γₛL.fst := fun x => sorry
   let eDₚ : TyₚD (eTyₚ (El T)) eDₛ aE := sorry
-  -- Now given D, we can obtain S (which are equations), and then... cast our result type?
+  -- Now given D, we can obtain S.
+  let eSₛ : ConₛS (eConₛ Γₛ) γₛL.fst eDₛ := elimConₛ eDₛ
   sorry
 | PPi T B, aL => fun x => sorry
 | PFunc A B, aL => fun x => sorry
 
--- ? Maybe we don't need rTyₚA at all?!
-
 def rConₚA : {Γ : Conₚ Γₛ} -> LConₚA Γ γₛL -> ConₚA Γ γₛ
 | Γ, γₚL => sorry
 
-
-
-
-
-
-
-
-def VecL (n) := @Sigma VecE (VecG n)
-def nilL : VecL 0 := ⟨.nil, .nil⟩
-def consL : (n : Nat) -> String -> VecL n -> VecL (n + 1)
-  := fun n x v => ⟨.cons n x v.fst, .cons n x v.fst v.snd⟩
-
--- This is `lowerTmₚA`
-def down : _root_.Vec String n -> VecL n
-| .nil => nilL
-| .cons n x v => consL n x (down v)
-
-namespace Useless
-  /- We first apply `VecE.rec`, then inside each branch we apply `VecG.rec`. -/
-  def up' : (e : VecE) -> VecG n e -> _root_.Vec String n
-  | .nil        , g => let .nil := g; .nil
-  | .cons n x vE, g => let .cons n x vE vG := g; .cons n x (up' vE vG)
+namespace Example
+  def VecL (n) := @Sigma VecE (VecG n)
+  def nilL : VecL 0 := ⟨.nil, .nil⟩
+  def consL : (n : Nat) -> String -> VecL n -> VecL (n + 1)
+    := fun n x v => ⟨.cons n x v.fst, .cons n x v.fst v.snd⟩
 
   set_option linter.unusedVariables false in
-  noncomputable def up_direct : (e : VecE) -> VecG n e -> _root_.Vec String n :=
-    @VecE.rec (fun e => (g : VecG n e) -> _root_.Vec String n)
+  /-- You can specify an eliminator for VecL, which behaves exactly the way that Vec.rec does. -/
+  noncomputable def VecL.elim
+    {motive : (n : Nat) -> VecL n -> Sort u}
+    (nilD : motive 0 nilL)
+    (consD : (n : Nat) -> (x : String) -> (vL : VecL n) -> motive n vL -> motive (n + 1) (consL n x vL))
+    (n : Nat)
+    (vL : VecL n)
+    : motive n vL :=
+    @VecE.rec (fun vE => (vG : VecG n vE) -> motive n ⟨vE, vG⟩)
+      (fun vG =>
+        @VecG.rec (fun n vE vG => motive n ⟨vE, vG⟩)
+          nilD
+          (fun n x vE vG ih_g => consD n x ⟨vE, vG⟩ ih_g)
+          n
+          .nil
+          vG
+      )
+      (fun n' x vE ih_e vG =>
+        @VecG.rec (fun n vE vG => motive n ⟨vE, vG⟩)
+          nilD
+          (fun n x vE vG ih_g => consD n x ⟨vE, vG⟩ ih_g)
+          n
+          (VecE.cons n' x vE)
+          vG
+      )
+      vL.fst
+      vL.snd
+
+  def down : Vec String n -> VecL n
+  | .nil => nilL
+  | .cons n x v => consL n x (down v)
+
+  /- We first apply `VecE.rec`, then inside each branch we apply `VecG.rec`. -/
+  def up_lean : (e : VecE) -> VecG n e -> Vec String n
+  | .nil        , g => let .nil := g; .nil
+  | .cons n x vE, g => let .cons n x vE vG := g; .cons n x (up_lean vE vG)
+
+  set_option linter.unusedVariables false in
+  noncomputable def up_recErecG : (e : VecE) -> VecG n e -> Vec String n :=
+    @VecE.rec (fun vE => (vG : VecG n vE) -> Vec String n)
       (fun g =>
-        @VecG.rec (fun n e g => _root_.Vec String n)
-          (_root_.Vec.nil)
-          (fun n x e g ih_g => _root_.Vec.cons n x ih_g)
+        @VecG.rec (fun n e g => Vec String n)
+          (Vec.nil)
+          (fun n x e g ih_g => Vec.cons n x ih_g)
           n
           .nil
           g
       )
       (fun n' x e ih_e g =>
-        @VecG.rec (fun n e g => _root_.Vec String n)
-          (_root_.Vec.nil)
-          (fun n x e g ih_g => _root_.Vec.cons n x ih_g)
+        @VecG.rec (fun n e g => Vec String n)
+          (Vec.nil)
+          (fun n x e g ih_g => Vec.cons n x ih_g)
           n
           (.cons n' x e)
           g
       )
 
-  def up : @Sigma VecE (VecG n) -> _root_.Vec String n := fun v => up' v.fst v.snd
+  /-- Using VecL.elim we can do the above much nicer. -/
+  noncomputable def up_recL : {n : Nat} -> (vL : VecL n) -> Vec String n :=
+    @VecL.elim (fun n _vL => Vec String n)
+      Vec.nil
+      (fun n x _vL ih => Vec.cons n x ih)
 
-  theorem Vec.up_down : up (down v) = v := by
-    induction v with
-    | nil => rfl
-    | cons n x v ih => simp_all only [up, up']
+  noncomputable abbrev up := @up_recL
 
-  @[simp] theorem Vec.down_eta : ⟨(down v).fst, (down v).snd⟩ = down v := by sorry -- simp [down]
-  @[simp] theorem Vec.up_down_eta : up ⟨(down v).fst, (down v).snd⟩ = v := by simp [down_eta, up_down]
-  theorem Vec.up'_is_up : up'.{u} (down v).fst (down v).snd = up.{u} ⟨(down v).fst, (down v).snd⟩ := by rw [up]
-  @[simp] theorem Vec.up'_down_eta : up' (down v).fst (down v).snd = v := by rw [Vec.up'_is_up, Vec.up_down_eta]
-end Useless
-
-@[irreducible] def len  : Vec String n -> Nat := fun _ => n
-@[irreducible] def lenL : VecL n       -> Nat := fun _ => n
-theorem len_is_lenL (v : Vec String n)           : len v         = lenL (down v) := by unfold len; unfold lenL; rfl
--- theorem lenL_is_len (vE : VecE) (vG : VecG n vE) : lenL ⟨vE, vG⟩ = len (up ⟨vE, vG⟩) := by unfold len; unfold lenL; rfl
-
-/-- Our original proof goal. -/
-def P (v : Vec String n) : Prop := ∀x, len  (.cons n x v) = .succ (len v)
-/-- Construct derived proof goal, along with `reconstruct` proof below. -/
-def PL.{u} (vL : VecL.{u} n) : Prop := ∀x, lenL (consL n x vL) = .succ (lenL vL)
-
-theorem reconstruct' : PL (down v) -> P v :=
-  fun h x => by
-    have h := h x
-    rw [len_is_lenL] -- we need to get `len_is_lenL` lemmas for each symbol we encounter... will be quite a few.
-    rw [len_is_lenL]
-    rw [down]
-    exact h
-
--- You'll need to construct two concrete vE and vG such that `h` is true. But they're just `down` evaluated.
-theorem reconstruct (h : ⟨vE, vG⟩ = down v) : PL ⟨vE, vG⟩ -> P v := by rw [h]; exact reconstruct'
-
+  -- theorem Vec.up_down : up (down v) = v := by
+  --   induction v with
+  --   | nil => rfl
+  --   | cons n x v ih => simp_all only [up, up_recL, VecL.elim, <- ih]; sorry
+  -- @[simp] theorem Vec.down_eta : ⟨(down v).fst, (down v).snd⟩ = down v := by sorry -- simp [down]
+  -- @[simp] theorem Vec.up_down_eta : up ⟨(down v).fst, (down v).snd⟩ = v := by simp [down_eta, up_down]
+  -- theorem Vec.up'_is_up : up_lean.{u} (down v).fst (down v).snd = up.{u} ⟨(down v).fst, (down v).snd⟩ := by simp [up, up_recL, VecL.elim]
+  -- @[simp] theorem Vec.up'_down_eta : up_lean (down v).fst (down v).snd = v := by rw [Vec.up'_is_up, Vec.up_down_eta]
 end Example
 
--- And now we are done. If the original goal has been `v : Vec n ⊢ ?g : P v`,
--- then we can close it with `?g := reconstruct _ ?g'`, where `vE, vG ⊢ ?g' : P' ⟨vE, vG⟩`,
--- and then give `?g'` to the smt solver.
--- Time to generalize!
+
+
+
+/-
+  # Reconstruction for whole Formulas
+  Ideally you'd have a term model, but that is considerable effort, requiring its own `Con`, `Ty`,
+  `Tm`, `Subst`, and inductive-inductive types.
+  So we just do this via good old metaprogramming, for now.
+-/
+
+namespace Example
+  @[irreducible] def len  : Vec String n -> Nat := fun _ => n
+  @[irreducible] def lenL : VecL n       -> Nat := fun _ => n
+  theorem len_is_lenL (v : Vec String n) : len v   = lenL (down v) := by unfold len; unfold lenL; rfl
+  theorem lenL_is_len (vL : VecL n)      : lenL vL = len (up vL) := by unfold len; unfold lenL; rfl
+
+  /-- Our original proof goal. -/
+  def P (v : Vec String n) : Prop := ∀x, len (.cons n x v) = .succ (len v)
+  /-- Construct derived proof goal, along with `reconstruct` proof below. -/
+  def PL.{u} (vL : VecL.{u} n) : Prop := ∀x, lenL (consL n x vL) = .succ (lenL vL)
+
+  theorem reconstruct' : PL (down v) -> P v :=
+    fun h x => by
+      have h := h x
+      rw [len_is_lenL] -- we need to get `len_is_lenL` lemmas for each symbol we encounter... will be quite a few.
+      rw [len_is_lenL]
+      rw [down]
+      exact h
+
+  -- You'll need to construct two concrete vE and vG such that `h` is true. But they're just `down` evaluated.
+  theorem reconstruct (h : vL = down v) : PL vL -> P v := by rw [h]; exact reconstruct'
+
+  -- And now we are done. If the original goal has been `v : Vec n ⊢ ?g : P v`,
+  -- then we can close it with `?g := reconstruct _ ?g'`, where `vE, vG ⊢ ?g' : P' ⟨vE, vG⟩`,
+  -- and then give `?g'` to the smt solver.
+  -- Time to generalize!
+end Example
 
 -- * Need some way to express types such as `∀x, ... = ...` as terms in order to pattern match on them.
 def reconstruct : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γₛ := sorry
@@ -395,28 +470,11 @@ def reconstruct : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γ�
 -- ? But can you express our example `Vec.reconstruct` with Tmₚ-based `reconstruct`?
 -- ! No, the above is just "up".
 def aaa := reconstruct
-  (Γₛ := Vₛ) (γₛ := ⟨⟨⟩, Vec String⟩) (γₛE := ⟨⟨⟩, VecE⟩) (γₛG := ⟨⟨⟩, VecG⟩)
+  (Γₛ := Vₛ) (γₛ := ⟨⟨⟩, Vec String⟩) (γₛE := ⟨⟨⟩, Example.VecE⟩) (γₛG := ⟨⟨⟩, Example.VecG⟩)
   (.app (.var .vz) 123)
-
-/-
-  Just imagine that it's a Tm, and how would it work then. The key will be iterating over the context
-  I think, since that's where all the inductive types with indices come from.
-  So then you just do induction over the context and it should be fine?
-  `Γ ⊢ t : A` encoded as `t : Tm Γ A`.
-  ? Maybe you can do something with substitutions, since they're basically just morphisms
-  ? between contexts? So we want `Tm Γ A` --> `Tm Γ' A'`, where Γ' is the index-erased/guarded ctx.
-
--/
 
 #check aaa
 
-
-
-inductive Ctx : Type where
-inductive Ty : Ctx -> Type where
-inductive Tm : (Γ : Ctx) -> Ty Γ -> Type 1 where -- these are pre-terms. we'll have to add wellfoundedness later.
-| var : Nat -> Tm Γ A
-| pi : Type -> Tm Γ A -- TODO The "type" here can't be pattern matched, UNLESS... we somehow reintroduce that via wellfoundedness later.
 
 def Vec.append : Vec α n → Vec α m → Vec α (n + m)
 | xs, .nil         => xs
