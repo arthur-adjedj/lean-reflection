@@ -1,4 +1,5 @@
 import Reflection.MutualInductive
+import Qq
 
 namespace Reflection.IndexErasure
 
@@ -467,30 +468,23 @@ end Example
 -- * Need some way to express types such as `∀x, ... = ...` as terms in order to pattern match on them.
 def reconstruct : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γₛ := sorry
 
--- ? But can you express our example `Vec.reconstruct` with Tmₚ-based `reconstruct`?
--- ! No, the above is just "up".
-def aaa := reconstruct
-  (Γₛ := Vₛ) (γₛ := ⟨⟨⟩, Vec String⟩) (γₛE := ⟨⟨⟩, Example.VecE⟩) (γₛG := ⟨⟨⟩, Example.VecG⟩)
-  (.app (.var .vz) 123)
-
-#check aaa
-
-
-def Vec.append : Vec α n → Vec α m → Vec α (n + m)
-| xs, .nil         => xs
-| xs, .cons _ y ys => (append xs (.cons _ y ys))
-
 open Lean Elab Term
+open Qq
 
-def lower : Expr -> MetaM Expr
+/-- Lowers a type. `-/
+def lowerTy : Q(Type u) -> MetaM Q(Type u)
 | .app f a => return .app (<- lower f) (<- lower a)
 | .forallE var dom body bi => return .forallE var
 | _ => throwError "oh no"
+
+def lowerTm {α β : Q(Type u)} : Q($α) -> MetaM Q($β)
+  := sorry
 
 /-- Given `P`, produces `P'` -/
 elab "lower! " t:term : term => do
   let tm <- elabTerm t none
   return tm
 
+open Example
 -- Okay let's assume our env only contains some extremely basic primitives.
 #check ∀n, ∀v, lower! ∀x, len (.cons n x v) = .succ (len v)
