@@ -3,14 +3,14 @@ import Qq
 
 namespace Reflection.IndexErasure
 
+set_option pp.fieldNotation false
+set_option pp.universes true
+
 open Reflection MutualInductive
 open Tyₛ Tyₚ Varₛ Varₚ
 
 -- # Erasure
 
-inductive Example.VecE : Type u where
-| nil : VecE
-| cons : Nat -> String -> VecE -> VecE
 
 def eTyₛ : Tyₛ.{u} -> Tyₛ.{u}
 | _ => U
@@ -75,10 +75,6 @@ def eTmₚ : Tmₚ Γ A -> Tmₚ (eConₚ Γ) (eTyₚ A)
 
 -- # Guard
 
-inductive Example.VecG : Nat -> VecE -> Type u where
-| nil : VecG 0 .nil
-| cons : (n : Nat) -> (x:String) -> (e : VecE) -> VecG n e -> VecG (n+1) (VecE.cons n x e)
-
 /-- For example maps `Vec : Nat -> U` to `VecG : Nat -> VecE -> U`.
   Note that `∀Aₛ, TyₛA (eraseTyₛ Aₛ) = Type`. -/
 -- def guardTyₛ : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, u} (eraseTyₛ Aₛ) -> Tyₛ.{u}
@@ -89,11 +85,11 @@ def gTyₛ : (Aₛ : Tyₛ.{u}) -> Type u -> Tyₛ.{u}
 abbrev GTyₛA.{u, v} Aₛ aₛE := TyₛA.{u, v} (gTyₛ Aₛ aₛE)
 
 /-- For example maps sort-stx `[Vec : Nat -> U]` into `[VecG : Nat -> VecE -> U]`. -/
-def gConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u} (eConₛ Γₛ)) -> Conₛ.{u}
+def gConₛ.{u} : (Γₛ : Conₛ.{max u v}) -> (γₛE : ConₛA.{max u v, v} (eConₛ.{_} Γₛ)) -> Conₛ.{max u v}
 | ⬝      , ⟨⟩         => ⬝
 | Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (gConₛ Γₛ γₛE) (gTyₛ Aₛ aₛE)
 
-abbrev GConₛA (Γₛ : Conₛ.{u}) (γₛE : EConₛA Γₛ) := ConₛA (gConₛ Γₛ γₛE)
+abbrev GConₛA (Γₛ : Conₛ) (γₛE : EConₛA Γₛ) := ConₛA (gConₛ Γₛ γₛE)
 
 /-- VecG : Nat -> VecE -> Type -/
 example : gConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
@@ -114,12 +110,12 @@ abbrev GTmₛ (Γₛ : Conₛ) (Aₛ : Tyₛ) (γₛE : ConₛA (eConₛ Γₛ))
   Challange is that we don't know which type (`Even`, `Odd`, etc) `t` refers to,
   it could be `Even @ 123` or `Odd @ 123`.
   So the output term's type needs to depend on `t`.  -/
-def gTmₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA.{0, 0} (eConₛ Γₛ)) ->
+def gTmₛ : {Γₛ : Conₛ} -> (γₛE : ConₛA (eConₛ Γₛ)) ->
   (t : Tmₛ Γₛ Aₛ) -> Tmₛ (gConₛ Γₛ γₛE) (gTyₛ Aₛ (TmₛA (eTmₛ t) γₛE))
 | Γₛ, γₛE, .var v              => by rw [eTmₛ, TmₛA]; exact .var (gVarₛ γₛE v)
 | Γₛ, γₛE, .app (A := _Aₛ) t u => .app (gTmₛ γₛE t) u
 
-abbrev GTmₛA (T : Tmₛ Γₛ Aₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA.{0,0} Γₛ γₛE) : GTyₛA Aₛ (ETmₛA T γₛE) := TmₛA (gTmₛ γₛE T) γₛG
+abbrev GTmₛA (T : Tmₛ Γₛ Aₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) : GTyₛA Aₛ (ETmₛA T γₛE) := TmₛA (gTmₛ γₛE T) γₛG
 
 abbrev GTyₚ (Γₛ : Conₛ) (γₛE : EConₛA Γₛ) : Type _ := Tyₚ (gConₛ Γₛ γₛE)
 
@@ -131,7 +127,7 @@ into `VecG.cons` of type
 ```
 VecG : Nat -> VecE -> U ⊢ (n:Nat) -> (x:A) -> (e : VecE) -> VecG n e -> VecG (n+1) (VecE.cons (n+1) x e)
 ``` -/
-def gTyₚ (γₛE : ConₛA.{0} (eConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA (eTyₚ A) γₛE) ->
+def gTyₚ (γₛE : ConₛA (eConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : TyₚA (eTyₚ A) γₛE) ->
   Tyₚ (gConₛ Γₛ γₛE)
 | El         Self, aE => El (.app (gTmₛ γₛE Self) aE) -- VecG ... (VecE.cons ...)
 | PPi   T    Rest, aE => PPi T (fun t => gTyₚ γₛE (Rest t) (aE t))
@@ -142,7 +138,6 @@ def gTyₚ (γₛE : ConₛA.{0} (eConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : T
 
 abbrev GTyₚA (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) (aE : TyₚA (eTyₚ A) γₛE) : Type _ := TyₚA (gTyₚ γₛE A aE) γₛG
 
-set_option pp.universes true in
 def gConₚ (γₛE : ConₛA (eConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (eConₚ Γ) γₛE) -> Conₚ (gConₛ Γₛ γₛE)
 | ⬝, ⟨⟩ => ⬝
 | Γ ▹ A, ⟨γE, aE⟩ => gConₚ γₛE Γ γE ▹ gTyₚ γₛE A aE
@@ -171,13 +166,12 @@ def gTmₚ (γₛE : ConₛA (eConₛ Γₛ)) (γE : ConₚA (eConₚ Γ) γₛE
 abbrev GTmₚ (Γ : Conₚ Γₛ) (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₚE : ConₚA (eConₚ Γ) γₛE) (tE : ETmₚ Γ A) : Type _
   := Tmₚ (gConₚ γₛE Γ γₚE) (gTyₚ γₛE A (TmₚA tE γₚE))
 
-set_option pp.fieldNotation false in
-section
-open Example
-#reduce gTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var .vz)
-#reduce gTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var (.vs .vz))
-#reduce gConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
-end
+-- section
+-- open Example
+-- #reduce gTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var .vz)
+-- #reduce gTmₚ (Γₛ := Vₛ) (Γ := V String) ⟨⟨⟩, VecE⟩ ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩ (.var (.vs .vz))
+-- #reduce gConₚ (Γₛ := Vₛ) ⟨⟨⟩, VecE⟩ (V String) ⟨⟨⟨⟩, VecE.nil⟩, VecE.cons⟩
+-- end
 
 /-
   # Lowering
@@ -216,11 +210,90 @@ def IsSimple (Γₛ : Conₛ) : Prop := Γₛ = eConₛ Γₛ
 --     then TyₛA Aₛ
 --     else (aₛE : ETyₛA.{max u v, v} Aₛ) × GTyₛA.{max u v, w} Aₛ aₛE
 
+-- Vec : TyₛA
 abbrev LTyₛA.{u, v, w} (Aₛ : Tyₛ.{max u v}) : Type ((max u v w) + 1) := (aₛE : ETyₛA.{max u v, v} Aₛ) × GTyₛA.{max u v, w} Aₛ aₛE
 abbrev LConₛA (Γₛ : Conₛ)                            : Type _ := (γₛE : EConₛA Γₛ) × GConₛA Γₛ γₛE
 abbrev LTmₛ (Γₛ : Conₛ) (Aₛ : Tyₛ) (γₛE : EConₛA Γₛ) : Type _ := (tE  : ETmₛ Γₛ)   × GTmₛ Γₛ Aₛ γₛE tE
 abbrev LTmₛA {Γₛ : Conₛ} (T : Tmₛ Γₛ U) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) : Type _ :=
   (e : ETmₛA T γₛE) × GTmₛA T γₛE γₛG e
+
+-- abbrev L (Aₛ : Tyₛ) : LTyₛA.{0,0,0} Aₛ -> Type _ := fun ⟨e, g⟩ => @Prod e g
+-- def mkLTyₛ : (Aₛ : Tyₛ) -> LTyₛA.{0,0,0} Aₛ -> TyₛA Aₛ
+-- | U, ⟨E, G⟩ => (e : E) × G e
+-- | SPi X Aₛ, ⟨E, G⟩ => fun (x : X) => mkLTyₛ (Aₛ x) ⟨E, G x⟩
+
+-- /-- Computes `VecE`. -/
+-- def mkETyₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ.{u} Ωₛ) : Tmₛ Ωₛ Aₛ -> Type ((max u v) + 1)
+-- | t => Tmₚ.{u, v} (eConₚ Ωₚ) (El (eTmₛ t))
+
+-- def mkGTyₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : Tmₛ Ωₛ Aₛ -> Type ((max u v) + 1)
+-- | t => Tmₚ.{u, v} (gConₚ Ωₚ)
+
+namespace Example
+  universe u v
+  set_option pp.universes false
+
+  def Vₛ : Conₛ.{u} := ⬝ ▹ SPi (ULift Nat) (fun _ => U)
+  def Vₚ_nil : Tyₚ.{u} Vₛ := El (.app (.var .vz) (.up 0))
+  def Vₚ_cons {A : Type u} : Tyₚ Vₛ :=
+    PPi (ULift Nat) fun n => -- (n : Nat) ->
+      PPi A fun _ => -- A ->
+        PFunc (.app (Tmₛ.var vz) n) <| -- Vec n ->
+          El (.app (Tmₛ.var vz) (.up <| (ULift.down n) + 1)) -- Vec (n + 1)
+  def Vₚ (A : Type u) : Conₚ Vₛ := (⬝ ▹ Vₚ_nil) ▹ @Vₚ_cons A
+
+  #check @mkTyₚ
+  def VₛE : Conₛ     := eConₛ Vₛ
+  def VₚE : Conₚ VₛE := eConₚ (Vₚ (ULift String))
+  def VₛEA : EConₛA.{u, u+1} Vₛ.{u}          := @mkConₛ.{u,u} VₛE VₚE
+  def VₚEA : EConₚA (Vₚ (ULift String)) VₛEA := @mkConₚ.{u,u} VₛE VₚE
+  def VecE : ETyₛA.{u, u+1} (SPi (ULift Nat) (fun _ => U)) := @mkTyₛ.{u,u} VₛE (eConₚ (Vₚ (ULift String))) U (.var .vz)
+  example : VₛEA = ⟨⟨⟩, VecE.{u}⟩ := rfl
+
+  -- #check TyₛA.{u, v} (gTyₛ Aₛ aₛE)
+  #check @gConₛ
+  #check @gConₚ
+  def VₛG : Conₛ.{u+1} := gConₛ.{u, u+1} Vₛ VₛEA
+  def VₚG : Conₚ VₛG := gConₚ VₛEA (Vₚ (ULift String)) VₚEA
+  #check @gConₚ.{0,1} Vₛ.{1} VₛEA (Vₚ (ULift String))
+  #check @mkTyₛ (gConₛ.{u,u+1} Vₛ ⟨⟨⟩, VecE⟩) --(@gConₚ Vₛ ⟨⟨⟩, VecE.{0}⟩ )
+  def VecG : TyₛA.{1, 1} <| gTyₛ (SPi (ULift Nat) (fun _ => U)) VₛEA.{0} := sorry --@mkTyₛ (gConₛ Vₛ ⟨⟨⟩, VecE⟩) (@gConₚ Vₛ ⟨⟨⟩, VecE⟩ )
+  -- def VecG : Type _ := @mkTyₛ (gConₛ Vₛ ⟨⟨⟩, VecE⟩) (@gConₚ Vₛ ⟨⟨⟩, VecE⟩ )
+  def VₛGA.{u} :=
+  #check @mkConₛ (eConₛ Vₛ) (eConₚ (Vₚ String))
+end Example
+
+#exit
+
+#check EConₛA
+#check mkETyₛ
+def mkEConₛ' (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : Subₛ Ωₛ Γₛ -> EConₛA.{u, v} Γₛ
+| .nil => ⟨⟩
+| .cons σ t => ⟨mkEConₛ' Ωₛ Ωₚ σ, mkETyₛ Ωₛ Ωₚ t⟩
+
+def mkGTyₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : (Aₛ : Tyₛ) -> Tmₛ Ωₛ Aₛ -> Type _
+| U, t => Tmₚ (gConₚ Ωₚ)
+| SPi X Aₛ, t => sorry
+
+def mkLTyₛ : (Aₛ : Tyₛ) -> LTmₛ Ωₛ Aₛ -> TyₛA Aₛ
+| U, ⟨E, G⟩ => (e : E) × G e
+| SPi X Aₛ, ⟨E, G⟩ => fun (x : X) => mkLTyₛ (Aₛ x) ⟨E, G x⟩
+
+
+namespace Example
+  abbrev VecL : Nat -> Type := fun n => (e : VecE) × VecG n e
+  #reduce LTyₛA (SPi Nat fun _ => U)
+  #check @Vec String
+  #check mkLTyₛ (SPi Nat fun _ => U) ⟨VecE, VecG⟩
+  #reduce mkLTyₛ (SPi Nat fun _ => U) ⟨VecE, VecG⟩
+  example : LTyₛA (SPi Nat fun _ => U) := ⟨VecE, VecG⟩
+  example : mkLTyₛ (SPi Nat fun _ => U) ⟨mkTyₛ (.var .vz), mkTyₛ (.var .vz)⟩ = sorry := by
+    simp [mkLTyₛ, VecE, VecG]
+    sorry
+  #check VecG
+  #check @TyₛA
+  #check @LTyₛA
+end Example
 
 /-- For example maps `"Vec 123"` to `⟨"VecE", "VecG 123"⟩`. -/
 def lTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (eConₛ Γₛ)) (t : Tmₛ Γₛ Aₛ) : LTmₛ Γₛ Aₛ γₛE
@@ -465,26 +538,124 @@ namespace Example
   -- Time to generalize!
 end Example
 
--- * Need some way to express types such as `∀x, ... = ...` as terms in order to pattern match on them.
-def reconstruct : (T : Tmₛ Γₛ U) -> lTmₛA γₛE γₛG T -> TmₛA T γₛ := sorry
-
-open Lean Elab Term
+open Lean Elab Term Meta
 open Qq
-
-/-- Lowers a type. `-/
-def lowerTy : Q(Type u) -> MetaM Q(Type u)
-| .app f a => return .app (<- lower f) (<- lower a)
-| .forallE var dom body bi => return .forallE var
-| _ => throwError "oh no"
-
-def lowerTm {α β : Q(Type u)} : Q($α) -> MetaM Q($β)
-  := sorry
-
-/-- Given `P`, produces `P'` -/
-elab "lower! " t:term : term => do
-  let tm <- elabTerm t none
-  return tm
-
 open Example
--- Okay let's assume our env only contains some extremely basic primitives.
-#check ∀n, ∀v, lower! ∀x, len (.cons n x v) = .succ (len v)
+
+abbrev Ty (_Γ : LocalContext) : Type := Q(Type)
+abbrev lowerCon : LocalContext -> LocalContext := id
+
+def lowerEnvDef (e : Expr) : MetaM Expr := do sorry
+
+-- mk
+#check @mkConₛ
+#check @mkConₚ
+
+-- E
+#check @eConₛ
+#check @eConₚ
+
+-- G
+#check @gConₛ
+#check @gConₚ
+#check GConₛA
+#check GConₚA
+
+#print axioms mkConₛ
+#print axioms mkConₚ
+
+structure Ind where
+  Γₛ : Q(Conₛ.{0})
+  Γₚ : Q(Conₚ $Γₛ)
+-- def Ind.E (i : Ind) : Ind := { }
+
+/-- Given `Vec`, produces `VecL`. -/
+def lowerTyₛ (e : Expr) : MetaM Expr := do
+  let Γₛ : Q(Conₛ.{0}) := sorry
+  let Γₚ : Q(Conₚ $Γₛ) := sorry
+
+  let ΓₛE : Q(Conₛ.{0}) := mkApp  q(@eConₛ.{0}) Γₛ
+  let ΓₚE : Q(Conₚ $ΓₛE) := mkApp2 q(@eConₚ.{0}) Γₛ Γₚ
+  let γₛE : Q(EConₛA.{0,0} $Γₛ)      := mkApp2 q(@mkConₛ.{0}) ΓₛE ΓₚE
+  let γₚE : Q(EConₚA.{0,0} $Γₚ $γₛE) := mkApp2 q(@mkConₚ.{0}) ΓₛE ΓₚE
+
+  let ΓₛG : Q(Conₛ.{0}) := mkApp2 q(@gConₛ.{0}) Γₛ γₛE
+  let ΓₚG : Q(Conₚ $ΓₛG) := mkApp4 q(@gConₚ) Γₛ γₛE Γₚ γₚE
+  let γₛG /- : Q(GConₛA.{0,0} ..) -/ := mkApp2 q(@mkConₛ.{0}) ΓₛG ΓₚG
+  let γₚG /- : Q(GConₚA.{0,0} ..)-/ := mkApp2 q(@mkConₚ.{0}) ΓₛG ΓₚG
+  let L : Q(Type) := q(@Sigma $)
+  sorry
+
+/-- Given `Vec.cons`, produces `VecL.cons`. -/
+def lowerTyₚ (e : Expr) : MetaM Expr := do
+  sorry
+
+def lowerEnv (e : Expr) : MetaM Expr := do
+  let .const name _ := e | throwError "lowerEnv: not a const"
+  match <- getConstInfo name with
+  | .inductInfo _ => lowerTyₛ e
+  | .ctorInfo _ => lowerTyₚ e
+  | .defnInfo di => sorry
+  | _ => throwError "lowerEnv: unsupported const kind for {name}"
+
+/-- Lowers a term.  -/
+def lowerTm (e : Expr) : MetaM Expr := do
+  match e with
+  | .app f a =>
+    -- `⊢ f : Pi A B`
+    -- `⊢ a : A`
+    -- `f a : B[a]`
+    -- `⊢ fᴸ : Pi Aᴸ Bᴸ`
+    return .app (<- lowerTm f) (<- lowerTm a)
+  -- | .lam .. => sorry
+  | .const name lvls => lowerEnv name lvls
+  | _ => throwError "oh no, lowerTm {e}"
+
+/-- Lowers a type. `lower : Ty Γ -> Ty Γᴸ`
+```
+def lowerTy : {Γ : Con} -> Ty Γ -> Ty Γᴸ
+| Γ, .Pi A B => -- where `Ty.Pi : (A : Ty Γ) -> Ty (Γ, A) -> Ty Γ`
+  let AL : Ty Γᴸ := lowerTy A
+  let BL : Ty (Γᴸ, Aᴸ) := lowerTy B -- because `(Γ, A)ᴸ ≣ (Γᴸ, Aᴸ)`
+  .Pi AL BL -- typechecks
+| Γ, El T => sorry
+``` -/
+partial def lowerTy (u : Level) (e : Expr) : MetaM Expr := do
+  if let Expr.sort _ := e then -- case `U : Ty Γ`
+    return e
+  else if let .forallE _ A _ _ := e then -- case `Pi A B : Ty Γ`
+    Meta.forallBoundedTelescope e (some 1) fun a_fv B => do
+      let Γ_A <- getLCtx -- `Γ, A` and `Γ, A ⊢ B`
+      let AL : Expr <- lowerTy u A -- Γᴸ ⊢ Aᴸ
+      let BL : Expr <- lowerTy u B -- (Γ, A)ᴸ ⊢ Bᴸ    is (hopefully) well-typed again.
+      let Γ_AL := Γ_A.modifyLocalDecl a_fv[0]!.fvarId! (fun ldecl => ldecl.setType AL)
+      withLCtx Γ_AL (<- getLocalInstances) do
+        mkForallFVars a_fv BL
+  else if let .fvar fv := e then
+    -- `⊢ a : A` gets casted to `⊢ aL : Aᴸ`. Since metaprogramming is untyped, this is a no-op.
+    return .fvar fv
+  else -- case `El T : Ty Γ`
+    let T := e.getAppFn
+    let args := e.getAppArgs
+    let v <- mkFreshLevelMVar
+    if <- isDefEq T q(Vec.{v}) then
+      let n := args[1]!
+      return mkAppN (.const ``Sigma [u, u]) #[q(VecE.{u}), .app q(VecG.{u}) n]
+    else if T.isAppOf ``Eq then return mkAppN (.const ``Eq [.zero]) args
+    else if T.isAppOf ``Nat || T.isAppOf ``String then return e
+    else throwError "oh no, {e}"
+
+#check Sigma
+#check Vec
+#check VecE
+#check VecG
+
+elab "lower! " T:term : term => do
+  let T <- elabTerm T none
+  let u <- Meta.mkFreshLevelMVar
+  lowerTy (u := u) T
+
+#check ∀n, ∀x, lower! ∀v, len (Vec.cons n x v) = (len v) + 1
+/- (n : Nat) → (x : String) → (v : PSigma (VecG n)) → TEq (len (Vec.cons n x v)) (len v + 1) -/
+
+#eval lowerTy q((v : MutualInductive.Vec String (nat_lit 0)) -> TEq (len (Vec.cons 0 "a" v)) ((len v) + 1))
