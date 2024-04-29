@@ -85,11 +85,18 @@ def gTyₛ : (Aₛ : Tyₛ.{u}) -> Type u -> Tyₛ.{u}
 abbrev GTyₛA.{u, v} Aₛ aₛE := TyₛA.{u, v} (gTyₛ Aₛ aₛE)
 
 /-- For example maps sort-stx `[Vec : Nat -> U]` into `[VecG : Nat -> VecE -> U]`. -/
-def gConₛ.{u} : (Γₛ : Conₛ.{max u v}) -> (γₛE : ConₛA.{max u v, v} (eConₛ.{_} Γₛ)) -> Conₛ.{max u v}
+def gConₛ.{u} : (Γₛ : Conₛ.{u}) -> (γₛE : ConₛA.{u, u+1} (eConₛ.{u} Γₛ)) -> Conₛ.{u}
 | ⬝      , ⟨⟩         => ⬝
-| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext (gConₛ Γₛ γₛE) (gTyₛ Aₛ aₛE)
+| Γₛ ▹ Aₛ, ⟨γₛE, aₛE⟩ => Conₛ.ext.{_} (gConₛ Γₛ γₛE) (gTyₛ.{u} Aₛ aₛE)
 
-abbrev GConₛA (Γₛ : Conₛ) (γₛE : EConₛA Γₛ) := ConₛA (gConₛ Γₛ γₛE)
+-- -- (γₛE : EConₛA.{max u v, u} Γₛ)
+-- abbrev GConₛA'.{u, v, w} (Γₛ : Conₛ.{max u v}) : Type ((max u v w) + 1)
+--   :=
+--     let γₛE : EConₛA.{max u v, _} Γₛ := mkConₛ
+--     ConₛA.{max u v, w} (gConₛ Γₛ γₛE)
+
+abbrev GConₛA.{u, v, w} (Γₛ : Conₛ.{max u v}) (γₛE : EConₛA.{max u v, u} Γₛ) : Type ((max u v w) + 1)
+  := ConₛA.{max u v, w} (gConₛ.{v, u} Γₛ γₛE)
 
 /-- VecG : Nat -> VecE -> Type -/
 example : gConₛ Vₛ ⟨⟨⟩, VecE⟩ = (⬝ ▹ SPi Nat fun _ => SPi VecE fun _ => U) := rfl
@@ -138,9 +145,21 @@ def gTyₚ (γₛE : ConₛA (eConₛ Γₛ)) : (A : Tyₚ Γₛ) -> (aE : Tyₚ
 
 abbrev GTyₚA (A : Tyₚ Γₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) (aE : TyₚA (eTyₚ A) γₛE) : Type _ := TyₚA (gTyₚ γₛE A aE) γₛG
 
-def gConₚ (γₛE : ConₛA (eConₛ Γₛ)) : (Γ : Conₚ Γₛ) -> (γE : ConₚA (eConₚ Γ) γₛE) -> Conₚ (gConₛ Γₛ γₛE)
+def gConₚ.{u, v} {Γₛ : Conₛ.{u}} (γₛE : ConₛA.{u, v} (eConₛ Γₛ))
+  : (Γ : Conₚ.{u} Γₛ) ->
+    (γE : ConₚA.{u, v} (eConₚ Γ) γₛE) ->
+    Conₚ.{max u v} (gConₛ.{_, max u v} Γₛ γₛE) -- ! why is this v u?
 | ⬝, ⟨⟩ => ⬝
 | Γ ▹ A, ⟨γE, aE⟩ => gConₚ γₛE Γ γE ▹ gTyₚ γₛE A aE
+
+#check @gConₚ
+/-
+{Γₛ : Conₛ.{max u_1 u_2}} →
+  (γₛE : ConₛA.{max u_1 u_2, u_1} (eConₛ.{max u_1 u_2} Γₛ)) →
+    (Γ : Conₚ.{max u_1 u_2} Γₛ) →
+      ConₚA.{max u_1 u_2, u_1} (eConₚ.{max u_1 u_2} Γ) γₛE →
+        Conₚ.{max u_1 u_2} (gConₛ.{u_2, u_1} Γₛ γₛE)
+-/
 
 abbrev GConₚA (Γ : Conₚ Γₛ) (γₛE : EConₛA Γₛ) (γₛG : GConₛA Γₛ γₛE) (γₚE : ConₚA (eConₚ Γ) γₛE) : Type _ := ConₚA (gConₚ γₛE Γ γₚE) γₛG
 
@@ -231,8 +250,9 @@ abbrev LTmₛA {Γₛ : Conₛ} (T : Tmₛ Γₛ U) (γₛE : EConₛA Γₛ) (�
 
 namespace Example
   universe u v
-  set_option pp.universes false
+  -- set_option pp.universes false
 
+  -- T
   def Vₛ : Conₛ.{u} := ⬝ ▹ SPi (ULift Nat) (fun _ => U)
   def Vₚ_nil : Tyₚ.{u} Vₛ := El (.app (.var .vz) (.up 0))
   def Vₚ_cons {A : Type u} : Tyₚ Vₛ :=
@@ -242,25 +262,43 @@ namespace Example
           El (.app (Tmₛ.var vz) (.up <| (ULift.down n) + 1)) -- Vec (n + 1)
   def Vₚ (A : Type u) : Conₚ Vₛ := (⬝ ▹ Vₚ_nil) ▹ @Vₚ_cons A
 
-  #check @mkTyₚ
+  -- E
   def VₛE : Conₛ     := eConₛ Vₛ
   def VₚE : Conₚ VₛE := eConₚ (Vₚ (ULift String))
   def VₛEA : EConₛA.{u, u+1} Vₛ.{u}          := @mkConₛ.{u,u} VₛE VₚE
-  def VₚEA : EConₚA (Vₚ (ULift String)) VₛEA := @mkConₚ.{u,u} VₛE VₚE
+  def VₚEA : EConₚA.{u, u+1} (Vₚ (ULift String)) VₛEA := @mkConₚ.{u,u} VₛE VₚE
   def VecE : ETyₛA.{u, u+1} (SPi (ULift Nat) (fun _ => U)) := @mkTyₛ.{u,u} VₛE (eConₚ (Vₚ (ULift String))) U (.var .vz)
   example : VₛEA = ⟨⟨⟩, VecE.{u}⟩ := rfl
 
-  -- #check TyₛA.{u, v} (gTyₛ Aₛ aₛE)
+  -- G
+  #check @eConₛ
   #check @gConₛ
-  #check @gConₚ
   def VₛG : Conₛ.{u+1} := gConₛ.{u, u+1} Vₛ VₛEA
-  def VₚG : Conₚ VₛG := gConₚ VₛEA (Vₚ (ULift String)) VₚEA
+  -- set_option trace.Meta.isDefEq true in
+
+  #print EConₚA
+
+  #check @gConₚ
+  /-
+  {Γₛ : Conₛ.{max u_1 u_2}} →
+  (γₛE : ConₛA.{max u_1 u_2, u_1} (eConₛ.{max u_1 u_2} Γₛ)) →
+    (Γ : Conₚ.{max u_1 u_2} Γₛ) →
+      ConₚA.{max u_1 u_2, u_1} (eConₚ.{max u_1 u_2} Γ) γₛE →
+        Conₚ.{max u_1 u_2} (gConₛ.{u_2, u_1} Γₛ γₛE)
+  -/
+
+  def VₚG
+    -- (γE : ConₚA.{u + 1, u} (eConₚ.{u + 1} (Vₚ.{u + 1} (ULift.{u + 1, 0} String))) VₛEA.{u})
+    (γE : EConₚA.{u+1, u} (Vₚ (ULift String)) VₛEA) -- ! why does it need the u+1 on LHS?!
+    : Conₚ.{u + 1} (gConₛ.{u + 1, u} Vₛ.{u + 1} VₛEA.{u})
+    := @gConₚ.{u, u+1} Vₛ VₛEA.{_} (Vₚ.{_} (ULift String)) γE -- VₚEA
+
+  def VₚG := @gConₚ.{u, u+1} Vₛ VₛEA.{u} (Vₚ.{u+1} (ULift String)) (@mkConₚ.{_,_} VₛE VₚE)
   #check @gConₚ.{0,1} Vₛ.{1} VₛEA (Vₚ (ULift String))
   #check @mkTyₛ (gConₛ.{u,u+1} Vₛ ⟨⟨⟩, VecE⟩) --(@gConₚ Vₛ ⟨⟨⟩, VecE.{0}⟩ )
   def VecG : TyₛA.{1, 1} <| gTyₛ (SPi (ULift Nat) (fun _ => U)) VₛEA.{0} := sorry --@mkTyₛ (gConₛ Vₛ ⟨⟨⟩, VecE⟩) (@gConₚ Vₛ ⟨⟨⟩, VecE⟩ )
   -- def VecG : Type _ := @mkTyₛ (gConₛ Vₛ ⟨⟨⟩, VecE⟩) (@gConₚ Vₛ ⟨⟨⟩, VecE⟩ )
-  def VₛGA.{u} :=
-  #check @mkConₛ (eConₛ Vₛ) (eConₚ (Vₚ String))
+  def VₛGA := mkConₛ
 end Example
 
 #exit
