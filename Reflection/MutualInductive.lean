@@ -113,7 +113,7 @@ section Examples
         PFunc (.app (Tmₛ.var vz) n) <| -- Vec n ->
           El (.app (Tmₛ.var vz) (n + 1)) -- Vec (n + 1)
 
-  def V (A : Type) : Conₚ Vₛ := (⬝ ▹ V_nil) ▹ @V_cons A
+  def Vₚ (A : Type) : Conₚ Vₛ := (⬝ ▹ V_nil) ▹ @V_cons A
 end Examples
 
 -- # Semantics
@@ -231,7 +231,7 @@ def ConₚA.{u, v} : Conₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
 | Γ ▹ A, γₛ => ConₚA Γ γₛ × TyₚA.{u, v} A γₛ
 
 example {Vec : Nat -> Type} {A : Type}
-  : ConₚA (V A) ⟨⟨⟩, Vec⟩
+  : ConₚA (Vₚ A) ⟨⟨⟩, Vec⟩
   = ((Unit × Vec 0) × ((n : Nat) -> A -> Vec n -> Vec (n + 1)))
   := rfl
 
@@ -420,7 +420,7 @@ def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (γ : ConₚA
 | Γ ▹ A, γₛS, ⟨γ, α⟩, ⟨γD, αD⟩ => ConₚS Γ γₛS γ γD ∧ TyₚS A γₛS α αD
 
 /-- Computation rules for Vec. This computes the *statement*, but doesn't *prove* it yet. -/
-example : @ConₚS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, Q⟩ (V A) ⟨⟨⟩, elim⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩ ⟨⟨⟨⟩, nilD⟩, consD⟩
+example : @ConₚS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, Q⟩ (Vₚ A) ⟨⟨⟩, elim⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩ ⟨⟨⟨⟩, nilD⟩, consD⟩
   = ((
       True
     ∧ (elim 0 Vec.nil = nilD))
@@ -960,10 +960,12 @@ theorem Subₚ_Tmₚ {σ : Subₚ Γ Δ} {t : Tmₚ Δ A} : TmₚA (SubₚTm t �
 
 -- # Sort and Points Constructors
 
+set_option pp.universes true
+
 -- The paper assumes `u := 0` but we generalize a little.
 universe u
-variable {Ωₛ : Conₛ.{u}}
-variable {Ω : Conₚ.{u} Ωₛ}
+variable (Ωₛ : Conₛ.{u})
+variable (Ωₚ : Conₚ.{u} Ωₛ)
 
 /-- Constructs a sort constructor from a mutual block.
 You then do, for example
@@ -988,38 +990,38 @@ fun (n : Nat) => Tmₚ (V String) (El ((.var .vz) @ n))    :   Nat -> Type
 which is a stand-in for `Vec String : Nat -> Type`.
 We do not have an actual `Vec String`, so instead we use `constrTmₛ (V String)`
 -/
-def mkTyₛ.{v} : {Aₛ : Tyₛ.{u}} -> Tmₛ.{u} Ωₛ Aₛ -> (TyₛA.{u, (max u v) + 1} Aₛ : Type ((max u v) + 2)) -- baked-in ULift into TyₛA
-| U      , t => Tmₚ.{u, v} Ω (El t)
-| SPi X _, t => fun (x : X) => mkTyₛ (.app t x)
+def mkTyₛ (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ.{u} Ωₛ) : {Aₛ : Tyₛ.{u}} -> Tmₛ.{u} Ωₛ Aₛ -> TyₛA.{u, (max u v) + 1} Aₛ
+| U      , t => Tmₚ.{u, v} Ωₚ (El t)
+| SPi X _, t => fun (x : X) => mkTyₛ Ωₛ Ωₚ (.app t x)
 
-set_option pp.universes true
 #check @mkTyₛ.{0, 0}
 
-example : TyₛA.{0, 1} U := mkTyₛ (Ω := V String) (Ωₛ := Vₛ) (.app (.var .vz) 123)
-example : TyₛA (SPi Nat (fun _ => U)) := mkTyₛ (Ω := V String) (Ωₛ := Vₛ) (.var .vz)
+example : Type 1        := mkTyₛ.{0, 0} Vₛ (Vₚ String) (.app (.var .vz) 123) -- `Vec 123 : Type 1`
+example : TyₛA.{0, 1} U := mkTyₛ Vₛ (Vₚ String) (.app (.var .vz) 123)
+example : TyₛA (SPi Nat (fun _ => U)) := mkTyₛ Vₛ (Vₚ String) (.var .vz)
 #reduce TyₛA (SPi Nat (fun _ => U))
 
 /-- When you write `Vec : Nat -> Type` in Lean, that is a primitive constructor with no actual definition.
   Instead, here we *actually* provide a definition of that type, concretely
   `fun (n:Nat) => Tmₚ _ "Vec n" : Nat -> Type`. This makes sense because `Tmₚ _ _ : Type`.
   And later constructors `Vec.nil` etc will actually be defined to produce values of this type `Tmₚ _ _`. -/
-example : mkTyₛ.{0, 0} (Ωₛ := Vₛ) (Ω := V String) (Aₛ := (SPi Nat (fun _ => U))) (.var .vz)
-  = fun (n : Nat) => Tmₚ.{0,0} (V String) (El (.app (.var .vz) n))
+example : mkTyₛ.{0, 0} Vₛ (Vₚ String) (Aₛ := (SPi Nat (fun _ => U))) (.var .vz)
+  = fun (n : Nat) => Tmₚ.{0,0} (Vₚ String) (El (.app (.var .vz) n))
   := rfl
 
-def mkConₛ' : Subₛ.{u} Ωₛ Γₛ -> (ConₛA.{u, (max u v) + 1} Γₛ : Type ((max u v) + 2))
+def mkConₛ' : Subₛ.{u} Ωₛ Γₛ -> ConₛA.{u, (max u v) + 1} Γₛ
 | .nil => ⟨⟩
-| .cons σ t => ⟨mkConₛ' σ, mkTyₛ.{u, v} (Ω := Ω) t⟩
+| .cons σ t => ⟨mkConₛ' σ, mkTyₛ.{u, v} Ωₛ Ωₚ t⟩
 
-def mkConₛ : ConₛA.{u, _} Ωₛ := mkConₛ' (Ω := Ω) (Subₛ.id Ωₛ)
+def mkConₛ : ConₛA.{u, (max u v) + 1} Ωₛ := mkConₛ'.{u, v} Ωₛ Ωₚ (Subₛ.id Ωₛ)
 
-example : mkConₛ (Ωₛ := Vₛ) (Ω := V String)
-  = ⟨⟨⟩, fun u => Tmₚ (V String) (El (.app (Tmₛ.var .vz) u))⟩
+example : mkConₛ Vₛ (Vₚ String)
+  = ⟨⟨⟩, fun (n : Nat) => Tmₚ (Vₚ String) (El (.app (Tmₛ.var .vz) n))⟩
   := rfl
 
-theorem mkTyₛ_app (f : Tmₛ Ωₛ (SPi T Aₛ)) (τ : T) : mkTyₛ.{u, v} (Ω:=Ω) (Aₛ := Aₛ τ) (Tmₛ.app f τ) = mkTyₛ.{u, v} (Ω:=Ω) f τ := rfl
+theorem mkTyₛ_app (f : Tmₛ Ωₛ (SPi T Aₛ)) (τ : T) : mkTyₛ.{u, v} Ωₛ Ωₚ (Tmₛ.app f τ) = mkTyₛ.{u, v} Ωₛ Ωₚ f τ := rfl
 
-theorem mkConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) -> TmₛA.{u, (max u v) + 1} t (@mkConₛ'.{u, v} Ωₛ Ω Γₛ σ) = @mkTyₛ.{u, v} Ωₛ Ω Aₛ (SubₛTm t σ)
+theorem mkConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) -> TmₛA.{u, (max u v) + 1} t (@mkConₛ'.{u, v} Ωₛ Ωₚ Γₛ σ) = @mkTyₛ.{u, v} Ωₛ Ωₚ Aₛ (SubₛTm t σ)
 | t                 , .nil      => False.elim (Tmₛ_emptyCtx t)
 | .var .vz          , .cons σ s => by rw [mkConₛ', TmₛA, VarₛA]; rfl
 | .var (.vs v)      , .cons σ s => by
@@ -1032,47 +1034,48 @@ theorem mkConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) 
 --   := funext <| mkConₛ_coherent t
 
 example
-  : @TyₚA Vₛ (PPi Nat fun n => @El Vₛ (.app (.var vz) n)) (@mkConₛ Vₛ (V String))
+  : @TyₚA Vₛ (PPi Nat fun n => @El Vₛ (.app (.var vz) n)) (mkConₛ Vₛ (Vₚ String))
   -- = ((n : Nat) -> (fun n => Tmₚ (V String) (El ((.var .vz) @ n))) n) -- intermediate step
-  = ((n : Nat) -> Tmₚ (V String) (El (.app (.var .vz) n)))
+  = ((n : Nat) -> Tmₚ (Vₚ String) (El (.app (.var .vz) n)))
   := rfl
 example
-  : @TyₚA Vₛ (El (.app (.var vz) 123)) (@mkConₛ Vₛ (V String))
-  = Tmₚ (V String) (El (.app (.var .vz) 123))
+  : @TyₚA Vₛ (El (.app (.var vz) 123)) (@mkConₛ Vₛ (Vₚ String))
+  = Tmₚ (Vₚ String) (El (.app (.var .vz) 123))
   := rfl
 
 -- theorem aux : TyₚA (El Self) (mkConₛ (Ω := Ω)) = Tmₚ.{u, v} Ω (El Self)
 --   := by rw [TyₚA, mkConₛ, mkConₛ_coherent Self, mkTyₛ, SubₛTm_id]
 
-def mkTyₚ : {A : Tyₚ _} -> Tmₚ Ω A -> TyₚA A (mkConₛ (Ω := Ω))
+def mkTyₚ : {A : Tyₚ _} -> Tmₚ Ωₚ A -> TyₚA A (mkConₛ Ωₛ Ωₚ)
 | El Self, t => by
   -- this is actually `⊢ Tmₚ Ω (El Self)` but lean isn't smart enough
   rw [TyₚA]
   rw [mkConₛ]
-  rw [mkConₛ_coherent Self]
+  rw [mkConₛ_coherent _ _ Self]
   rw [mkTyₛ]
   rw [SubₛTm_id]
   exact t
 | PPi T A, t => fun τ => mkTyₚ (.app t τ)
 | PFunc Self A, t =>
   fun u =>
-    let u : Tmₚ Ω (El Self) := by
+    let u : Tmₚ Ωₚ (El Self) := by
       rw [mkConₛ] at u
-      rw [mkConₛ_coherent Self] at u
+      rw [mkConₛ_coherent _ _ Self] at u
       rw [SubₛTm_id] at u
       exact u
     mkTyₚ (.appr t u)
 
 #print axioms SubₛTm_id -- sorry
 
-def mkConₚ' : Subₚ Ω Γ -> ConₚA Γ (mkConₛ (Ω := Ω))
+def mkConₚ' : Subₚ Ωₚ Γ -> ConₚA Γ (mkConₛ Ωₛ Ωₚ)
 | .nil => ⟨⟩
-| .cons σ t => ⟨mkConₚ' σ, mkTyₚ (Ω := Ω) t⟩
+| .cons σ t => ⟨mkConₚ' σ, mkTyₚ Ωₛ Ωₚ t⟩
 
-def mkConₚ := mkConₚ' (Subₚ.id Ω)
+def mkConₚ := mkConₚ' _ _ (Subₚ.id Ωₚ)
 
+set_option pp.universes false in
 -- Lemma 18
-theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ω Γ) -> TmₚA t (@mkConₚ' Ωₛ Ω Γ σ) = @mkTyₚ Ωₛ Ω A (SubₚTm t σ)
+theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ωₚ Γ) -> TmₚA t (@mkConₚ' Ωₛ Ωₚ Γ σ) = @mkTyₚ Ωₛ Ωₚ A (SubₚTm t σ)
 | t                 , .nil      => False.elim (Tmₚ_emptyCtx t)
 | .var .vz          , .cons σ s => by rw [mkConₚ', TmₚA, VarₚA]; rfl
 | .var (.vs v)      , .cons σ s => by
@@ -1093,6 +1096,8 @@ theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ω Γ) -> TmₚA t 
   conv in mkTyₚ _ => unfold mkTyₚ
   rw [mkTyₚ]
   simp [Eq.mp, Eq.mpr, eq_cast_trans]
+  sorry -- this broke when making Ωₛ and Ωₚ explicit somehow
+  done
 
 #print axioms mkConₚ_coherent
 
@@ -1102,11 +1107,11 @@ theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ω Γ) -> TmₚA t 
 
 -- # Eliminator
 
-variable (ωₛD : ConₛD Ωₛ mkConₛ) (ωD : ConₚD Ω ωₛD mkConₚ)
+variable (ωₛD : ConₛD Ωₛ (mkConₛ Ωₛ Ωₚ)) (ωₚD : ConₚD Ωₚ ωₛD (mkConₚ Ωₛ Ωₚ))
 
 -- #check aux
 
-def elimTyₛ : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, _} Aₛ (TmₛA t (mkConₛ (Ω:=Ω))) (TmₛD t ωₛD)
+def elimTyₛ : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, _} Aₛ (TmₛA t (mkConₛ Ωₛ Ωₚ)) (TmₛD t ωₛD)
 | U, a =>
   -- a : Tmₛ Ωₛ U
   -- ⊢ TyₛS U (TmₛA a constrₛ) (TmₛD a ωₛD)
@@ -1128,15 +1133,15 @@ def elimTyₛ : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, _
     exact res
 
 
-def elimConₛ' : (σ : Subₛ Ωₛ Γₛ) -> ConₛS Γₛ (SubₛA σ mkConₛ) (SubₛD σ ωₛD)
+def elimConₛ' : (σ : Subₛ Ωₛ Γₛ) -> ConₛS Γₛ (SubₛA σ (mkConₛ Ωₛ Ωₚ)) (SubₛD σ ωₛD)
 | .nil => ⟨⟩
-| .cons σ t => ⟨elimConₛ' σ, elimTyₛ (Ω := Ω) ωₛD t⟩
+| .cons σ t => ⟨elimConₛ' σ, elimTyₛ Ωₛ Ωₚ ωₛD t⟩
 
-def elimConₛ (ωₛD : ConₛD Ωₛ (@mkConₛ Ωₛ Ω)) : ConₛS Ωₛ mkConₛ ωₛD
+def elimConₛ (ωₛD : ConₛD Ωₛ (mkConₛ Ωₛ Ωₚ)) : ConₛS Ωₛ (mkConₛ Ωₛ Ωₚ) ωₛD
   := by
-    let res := elimConₛ' ωₛD (Subₛ.id Ωₛ)
+    let res := elimConₛ' Ωₛ Ωₚ ωₛD (Subₛ.id Ωₛ)
     have h₁ := ConₛS_helper SubₛA_id (SubₛD (Subₛ.id Ωₛ) ωₛD)
-    have h₂ : (@Eq.rec (ConₛA Ωₛ) (SubₛA (Subₛ.id Ωₛ) mkConₛ) (fun x _h => ConₛD Ωₛ x) (SubₛD (Subₛ.id Ωₛ) ωₛD) mkConₛ SubₛA_id) = ωₛD := by rw [SubₛD_id, eq_symm_cancel]
+    have h₂ : (@Eq.rec (ConₛA Ωₛ) (SubₛA (Subₛ.id Ωₛ) (mkConₛ Ωₛ Ωₚ)) (fun x _h => ConₛD Ωₛ x) (SubₛD (Subₛ.id Ωₛ) ωₛD) (mkConₛ Ωₛ Ωₚ) SubₛA_id) = ωₛD := by rw [SubₛD_id, eq_symm_cancel]
     rw [h₁, h₂] at res
     exact res
 
@@ -1150,7 +1155,7 @@ def elimConₛ (ωₛD : ConₛD Ωₛ (@mkConₛ Ωₛ Ω)) : ConₛS Ωₛ mkC
 -- theorem lemma20 (σ : Subₛ Ωₛ Γₛ) (t : Tmₛ Γₛ Aₛ) : elimTyₛ ωₛD (SubₛTm t σ) = TmₛA_Subₛ ▸ TmₛD_Subₛ' ▸ TmₛS t (elimConₛ' ωₛD σ)
 --   := sorry
 
-theorem elimTyₚ (t : Tmₚ Ω A) : TyₚS A (elimConₛ ωₛD) (TmₚA t (mkConₚ (Ω:=Ω))) (TmₚD t ωD) := by
+theorem elimTyₚ (t : Tmₚ Ωₚ A) : TyₚS A (elimConₛ Ωₛ Ωₚ ωₛD) (TmₚA t (mkConₚ Ωₛ Ωₚ)) (TmₚD t ωₚD) := by
   induction A with
   | El         Self        =>
     rw [TyₚS]
@@ -1163,7 +1168,7 @@ theorem elimTyₚ (t : Tmₚ Ω A) : TyₚS A (elimConₛ ωₛD) (TmₚA t (mkC
   | PPi   T    Rest ihRest => sorry
   | PFunc Self Rest ihRest => sorry
 
-theorem elimConₚ (σ : Subₚ Ω Γ) : ConₚS Γ (elimConₛ ωₛD) (SubₚA σ (mkConₚ (Ω:=Ω))) (SubₚD σ ωD) := sorry
+theorem elimConₚ (σ : Subₚ Ωₚ Γ) : ConₚS Γ (elimConₛ Ωₛ Ωₚ ωₛD) (SubₚA σ (mkConₚ Ωₛ Ωₚ)) (SubₚD σ ωₚD) := sorry
 
 
 
@@ -1182,9 +1187,9 @@ theorem elimConₚ (σ : Subₚ Ω Γ) : ConₚS Γ (elimConₛ ωₛD) (SubₚA
 
 
 namespace Example.Constructing
-  def Vec (A : Type) : Nat -> Type 1                                 := mkTyₛ (Ω := V A) (.var .vz)
-  def Vec.nil (A : Type) : Vec A 0                                   := mkTyₚ (Ω := V A) (.var (.vs .vz)) -- de brujin index 1
-  def Vec.cons (A : Type) : (n : Nat) -> A -> Vec A n -> Vec A (n+1) := mkTyₚ (Ω := V A) (.var .vz) -- de brujin index 0
+  def Vec (A : Type) : Nat -> Type 1                                 := mkTyₛ Vₛ (Vₚ A) (.var .vz)
+  def Vec.nil (A : Type) : Vec A 0                                   := mkTyₚ Vₛ (Vₚ A) (.var (.vs .vz)) -- de brujin index 1
+  def Vec.cons (A : Type) : (n : Nat) -> A -> Vec A n -> Vec A (n+1) := mkTyₚ Vₛ (Vₚ A) (.var .vz) -- de brujin index 0
 
   #reduce Vec String 0
   #reduce Vec.nil
@@ -1192,8 +1197,8 @@ namespace Example.Constructing
   #reduce Vec.cons
   #reduce Vec.cons Nat 0 123 (Vec.nil Nat)
 
-  def Vec.recs {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : ConₛS Vₛ mkConₛ dₛ := elimConₛ dₛ -- all recs for the mutual block
-  def Vec.rec' {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₛS (SPi Nat fun _ => U) (TmₛA (Tmₛ.var vz) mkConₛ) (TmₛD (Tmₛ.var vz) dₛ) := elimTyₛ (Ω := V A) dₛ (.var .vz)
+  def Vec.recs {A} (dₛ : ConₛD Vₛ (mkConₛ Vₛ (Vₚ A))) : ConₛS Vₛ (mkConₛ Vₛ (Vₚ A)) dₛ := elimConₛ Vₛ (Vₚ A) dₛ -- all recs for the mutual block
+  def Vec.rec' {A} (dₛ : ConₛD Vₛ (mkConₛ Vₛ (Vₚ A))) : TyₛS (SPi Nat fun _ => U) (TmₛA (Tmₛ.var vz) (mkConₛ Vₛ (Vₚ A))) (TmₛD (Tmₛ.var vz) dₛ) := elimTyₛ Vₛ (Vₚ A) dₛ (.var .vz)
   -- def Vec.rec.nil {A} (dₛ : ConₛD Vₛ (mkConₛ (Ω:=V A))) : TyₚS _ _ _ _ := elimTyₚ dₛ (.var (.vs .vz))
   -- theorem Vec.rec.cons := elimₚ
   #check Vec.recs
