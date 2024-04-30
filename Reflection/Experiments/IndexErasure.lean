@@ -212,21 +212,17 @@ def IsSimple (Γₛ : Conₛ) : Prop := Γₛ = eConₛ Γₛ
 
 -- ## Lowering Sorts
 
--- abbrev LTyₛA.{u, v, w} (Aₛ : Tyₛ.{max u v}) : Type ((max u v w) + 1) :=
---   if Aₛ = U
---     then TyₛA Aₛ
---     else (aₛE : ETyₛA.{max u v, v} Aₛ) × GTyₛA.{max u v, w} Aₛ aₛE
-
--- Vec : TyₛA
 abbrev LTyₛA (Aₛ : Tyₛ.{u})                          : Type (u+2) := (aₛE : ETyₛA.{u,u+1} Aₛ) × GTyₛA.{u,u} Aₛ aₛE
 abbrev LConₛA (Γₛ : Conₛ)                            : Type (u+2) := (γₛE : EConₛA Γₛ) × GConₛA Γₛ γₛE
 abbrev LTmₛ (Γₛ : Conₛ) (Aₛ : Tyₛ) (γₛE : EConₛA Γₛ) : Type (u+2) := (tE  : ETmₛ Γₛ)   × GTmₛ Γₛ Aₛ γₛE tE
 abbrev LTmₛA {Γₛ : Conₛ} (T : Tmₛ.{u} Γₛ U) (γₛL : LConₛA Γₛ) : Type (u+1) := -- make this `... -> Type (max (u+1) v)` some day.
   (e : ETmₛA T γₛL.fst) × GTmₛA T γₛL.fst γₛL.snd e
 
--- def mkLTyₛ : (Aₛ : Tyₛ) -> LTyₛA.{0,0,0} Aₛ -> TyₛA Aₛ
--- | U, ⟨E, G⟩ => (e : E) × G e
--- | SPi X Aₛ, ⟨E, G⟩ => fun (x : X) => mkLTyₛ (Aₛ x) ⟨E, G x⟩
+def mkLTyₛ' : (Aₛ : Tyₛ) -> LTyₛA.{u} Aₛ -> TyₛA.{u, u+1} Aₛ
+| U       , ⟨E, G⟩ => (e : E) × G e
+| SPi X Aₛ, ⟨E, G⟩ => fun (x : X) => mkLTyₛ' (Aₛ x) ⟨E, G (.up x)⟩
+
+def mkLTyₛ {Aₛ : Tyₛ} : TyₛA.{u, u+1} Aₛ := mkLTyₛ' Aₛ ⟨mkTyₛ ⟩
 
 namespace Example
   universe u v
@@ -248,33 +244,28 @@ namespace Example
   def VₚEA : EConₚA.{u, u+1} (Vₚ (ULift String)) VₛEA := mkConₚ.{u,u} VₛE VₚE
   def VecE : ETyₛA.{u, u+1} (SPi (ULift Nat) (fun _ => U)) := mkTyₛ.{u,u} VₛE VₚE (.var .vz)
   example : VₛEA = ⟨⟨⟩, VecE⟩ := rfl -- actually surprised this works by rfl
+  #reduce VₚEA
 
   -- G
   def VₛG : Conₛ     := gConₛ.{u} Vₛ VₛEA
   def VₚG : Conₚ VₛG := gConₚ VₛEA (Vₚ (ULift String)) VₚEA
-  def VₛGA : ConₛA.{u+1, u+2} VₛG      := mkConₛ.{u+1,u} VₛG VₚG
-  def VₚGA : ConₚA.{u+1, u+2} VₚG VₛGA := mkConₚ.{u+1,u} VₛG VₚG
-  def VecG := mkTyₛ.{u+1,u} VₛG VₚG (.var .vz)
+  def VₛGA : ConₛA.{u+1, u+2} VₛG      := mkConₛ.{u+1, u} VₛG VₚG
+  def VₚGA : ConₚA.{u+1, u+2} VₚG VₛGA := mkConₚ.{u+1, u} VₛG VₚG
+  def VecG := mkTyₛ.{u+1, u} VₛG VₚG (.var .vz)
   example : VₛGA = ⟨⟨⟩, VecG⟩ := rfl
-
   #reduce VₚGA
 
   -- L
-  def VecL : Nat -> Type (u+2) := fun n => (e : VecE) × VecG (.up (.up n)) e
-  def VecL.nil : VecL 0 := ⟨⟩
+  def VₛL : Conₛ
+  def VecL : Nat -> Type (u+2) := fun (n : Nat) => (e : VecE) × VecG (.up (.up n)) e
+  def asfsdaf : LTyₛA Aₛ := ⟨VecE, VecG⟩
+  #reduce mkLTyₛ' (SPi Nat fun _ => U) ⟨VecE, VecG⟩
 end Example
 
 namespace Example
-  abbrev VecL : Nat -> Type := fun n => (e : VecE) × VecG n e
   #reduce LTyₛA (SPi Nat fun _ => U)
-  #check @Vec String
   #check mkLTyₛ (SPi Nat fun _ => U) ⟨VecE, VecG⟩
   #reduce mkLTyₛ (SPi Nat fun _ => U) ⟨VecE, VecG⟩
-  example : LTyₛA (SPi Nat fun _ => U) := ⟨VecE, VecG⟩
-  example : mkLTyₛ (SPi Nat fun _ => U) ⟨mkTyₛ (.var .vz), mkTyₛ (.var .vz)⟩ = sorry := by
-    simp [mkLTyₛ, VecE, VecG]
-    sorry
-  #check VecG
   #check @TyₛA
   #check @LTyₛA
 end Example
@@ -284,12 +275,10 @@ def lTmₛ {Γₛ : Conₛ} {Aₛ : Tyₛ} (γₛE : ConₛA (eConₛ Γₛ)) (t
   := ⟨eTmₛ t, gTmₛ γₛE t⟩
 
 /-- We want to obtain the actual `(e : VecE) × VecG e`. -/
-def lTmₛA (γₛE : ConₛA.{0, 0} (eConₛ Γₛ)) (γₛG : ConₛA (gConₛ Γₛ γₛE)) (T : Tmₛ Γₛ U) : Type _
+def lTmₛA (γₛE : ConₛA (eConₛ Γₛ)) (γₛG : ConₛA (gConₛ Γₛ γₛE)) (T : Tmₛ Γₛ U) : Type _
   := @Sigma (ETmₛA T γₛE) (GTmₛA T γₛE γₛG)
 
-#exit
-
-set_option pp.universes true in
+#reduce lTmₛA ⟨⟨⟩, VecE⟩ ⟨⟨⟩, VecG⟩ (.var .vz)
 
 /-- Construct new inductive types. -/
 def lConₛA : (Γₛ : Conₛ) -> (Γₚ : Conₚ Γₛ) -> LConₛA.{0,0} Γₛ
@@ -351,7 +340,7 @@ section
     := rfl
 end
 
-
+#exit
 
 /- # Reconstruction for Mutually Inductive Types
   Given `P : Vec n -> Prop`, We can derive `P' : @Sigma VecE (VecG n) -> Prop`.
