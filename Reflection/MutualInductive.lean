@@ -19,6 +19,11 @@ inductive Tyₛ : Type (u + 1)
 | SPi : (T : Type u) -> (T -> Tyₛ) -> Tyₛ
 open Tyₛ
 
+-- cursed approach to avoid u+1 (credits to Jakob)
+-- inductive Tyₛ' (Ts : List (Type u)) : Type u
+-- | U : Tyₛ' Ts
+-- | SPi : (i : Fin (Ts.length)) -> (T[i] -> Tyₛ' Ts) -> Tyₛ' Ts
+
 inductive Conₛ
 | nil : Conₛ
 | ext : Conₛ -> Tyₛ -> Conₛ
@@ -160,6 +165,11 @@ def VarₛA : Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
 | vz  , ⟨_, a⟩ => a
 | vs v, ⟨γₛ, _⟩ => VarₛA v γₛ
 
+-- Doing it this way somehow results in non-defeq for eqns
+def TmₛA_impl.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA.{u, v} Γₛ -> TyₛA.{u, v} Aₛ
+| Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
+| Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA_impl t γₛ) u
+
 /-- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
 @TmₛA ["Nat -> Type"] "Type" "Vec 123" ⟨Vec, ()⟩
@@ -186,11 +196,9 @@ _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
 ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
 ```
 -/
--- Doing it this way somehow results in non-defeq for eqns
--- def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA.{u, v} Γₛ -> TyₛA.{u, v} Aₛ
--- | Γ, A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
--- | Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
-noncomputable def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA.{u, v} Γₛ -> TyₛA.{u, v} Aₛ
+
+@[implemented_by TmₛA_impl]
+def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA.{u, v} Γₛ -> TyₛA.{u, v} Aₛ
 | Γₛ, Aₛ, t, γₛ => @Tmₛ.rec Γₛ (fun Aₛ _ => TyₛA Aₛ)
   (@fun _Aₛ v => VarₛA v γₛ)
   (@fun _ _Aₛ _t u ih => ih u)
@@ -296,6 +304,10 @@ def VarₛD : {Γₛ : Conₛ} -> {γₛ : ConₛA Γₛ} -> (v : Varₛ Γₛ A
 --   sorry
 --   done
 
+def TmₛD_impl : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
+| _, _, γₛ, .var v                    , γₛD => VarₛD v γₛD
+| _, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛD_impl t γₛD u
+
 /--
 The [original Agda code](https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IFD.agda#lines-17:20)
 for this is, again with `VarₛD` inlined:
@@ -308,15 +320,13 @@ for this is, again with `VarₛD` inlined:
 -- ! TmₛD needs casts because reduction behaviour of TmₛA is broken.
 -- And for some reason TmₚD works just fine? What...
 -- @[aesop unsafe]
-noncomputable def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
+@[implemented_by TmₛD_impl]
+def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
 | Γₛ, Aₛ, γₛ, t, γₛD => @Tmₛ.rec Γₛ (fun Aₛ t => TyₛD Aₛ (TmₛA t γₛ))
   (@fun _Aₛ v => VarₛD v γₛD)
   (@fun _ _Aₛ _t u ih => ih u)
   Aₛ t
 
--- def TmₛD : {Γₛ : Conₛ} -> {Aₛ : Tyₛ} -> {γₛ : ConₛA Γₛ} -> (t : Tmₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (TmₛA t γₛ)
--- | _, _, γₛ, .var v                    , γₛD => VarₛD v γₛD
--- | _, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛD t γₛD u
 
 theorem TmₛD_var : TmₛD (Tmₛ.var v) γₛD = VarₛD v γₛD := by rfl
 theorem TmₛD_app : TmₛD (.app t u)  γₛD = TmₛD t γₛD u := by rfl
@@ -499,18 +509,20 @@ def vshift : {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> Tmₛ (Γₛ ▹ Bₛ) Aₛ
 | _, .var v => .var (.vs v)
 | _, .app (A := _A) t u => .app (vshift t) u
 
+def weaken_impl.{u} : {Γₛ Δₛ : Conₛ.{u}} -> {Aₛ : Tyₛ.{u}} -> Subₛ.{u} Γₛ Δₛ -> Subₛ (Γₛ ▹ Aₛ) Δₛ
+| Γₛ, .nil    , Aₛ, .nil => .nil
+| Γₛ, Δₛ ▹ Bₛ, Aₛ, .cons σ t => Subₛ.cons (weaken_impl σ) (vshift t)
+
 -- /-- Weakens a substitution.
 -- -- @[aesop unsafe]
 --   Given a substitution `σ` which replaces all variables `Δₛ ⊢ v` with terms `Γₛ ⊢ t`,
 --   the weakened substitution will replace all variables `Δₛ ⊢ v` with terms `Γₛ, Aₛ ⊢ t`.
 --   The stored terms thus need to be shifted using `vshift`. -/
--- def weaken'.{u} : {Γₛ Δₛ : Conₛ.{u}} -> {Aₛ : Tyₛ.{u}} -> Subₛ.{u} Γₛ Δₛ -> Subₛ (Γₛ ▹ Aₛ) Δₛ
--- | Γₛ, .nil    , Aₛ, .nil => .nil
--- | Γₛ, Δₛ ▹ Bₛ, Aₛ, .cons σ t => Subₛ.cons (weaken' σ) (vshift t)
 -- example : @weaken'  Γₛ .nil Aₛ .nil = .nil := rfl
 -- example : @weaken'  Γₛ (Δₛ ▹ Bₛ) Aₛ (.cons σ t) = Subₛ.cons (weaken' σ) (vshift t) := by rw [weaken'] -- doesn't work by rfl
 
-noncomputable def weaken.{u} {Γₛ Δₛ : Conₛ.{u}} {Aₛ : Tyₛ.{u}} (σ : Subₛ.{u} Γₛ Δₛ) : Subₛ (Γₛ ▹ Aₛ) Δₛ
+@[implemented_by weaken_impl]
+def weaken.{u} {Γₛ Δₛ : Conₛ.{u}} {Aₛ : Tyₛ.{u}} (σ : Subₛ.{u} Γₛ Δₛ) : Subₛ (Γₛ ▹ Aₛ) Δₛ
   := @Subₛ.rec Γₛ (fun Δₛ _ => Subₛ (Γₛ ▹ Aₛ) Δₛ)
     (Subₛ.nil)
     (@fun _ _ _ t σ_ih => Subₛ.cons σ_ih (vshift t))
@@ -521,7 +533,7 @@ theorem weaken_cons : @weaken Γₛ (Δₛ ▹ Bₛ) Aₛ (.cons σ t) = Subₛ.
 
 /-- Identity substitution. Does nothing (replaces all variables by itself). -/
 -- @[aesop unsafe]
-noncomputable def Subₛ.id : (Γₛ : Conₛ) -> Subₛ Γₛ Γₛ
+def Subₛ.id : (Γₛ : Conₛ) -> Subₛ Γₛ Γₛ
 | ⬝ => .nil
 | Γₛ ▹ _ => .cons (weaken (Subₛ.id Γₛ)) (.var .vz)
 
@@ -534,14 +546,14 @@ def Subₛ.comp : Subₛ Θₛ Δₛ -> Subₛ Γₛ Θₛ -> Subₛ Γₛ Δₛ
 
 -- Substitution projection are just pattern matching `let .cons δ t := σ`
 
-noncomputable def SubₛA : Subₛ Γₛ Δₛ -> ConₛA Γₛ -> ConₛA Δₛ
+def SubₛA : Subₛ Γₛ Δₛ -> ConₛA Γₛ -> ConₛA Δₛ
 | .nil     ,  _ => ⟨⟩
 | .cons σ t, γₛ => ⟨SubₛA σ γₛ, TmₛA t γₛ⟩
 
 theorem SubₛA_nil : SubₛA .nil γₛ = ⟨⟩ := rfl
 theorem SubₛA_cons : SubₛA (.cons σ t) γₛ = ⟨SubₛA σ γₛ, TmₛA t γₛ⟩ := rfl
 
-noncomputable def SubₛD : (σ : Subₛ Γₛ Δₛ) -> ConₛD Γₛ γₛ -> ConₛD Δₛ (SubₛA σ γₛ)
+def SubₛD : (σ : Subₛ Γₛ Δₛ) -> ConₛD Γₛ γₛ -> ConₛD Δₛ (SubₛA σ γₛ)
 | .nil, γₛD => ⟨⟩
 | .cons σ t, γₛD => ⟨SubₛD σ γₛD, TmₛD t γₛD⟩
 
@@ -666,10 +678,6 @@ theorem TmₛD_Subₛ {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : 
     simp [TyₛD_cast_tm]
     done
 
--- theorem TmₛD_Subₛ' {σ : Subₛ Γₛ Δₛ} {t : Tmₛ Δₛ Aₛ} {γₛ : ConₛA Γₛ} {γₛD : ConₛD Γₛ γₛ}
---   : TmₛA_Subₛ ▸ TmₛD t (SubₛD σ γₛD) = TmₛD (γₛ := γₛ) (SubₛTm t σ) γₛD
---   := by rw [TmₛD_Subₛ, eq_symm_cancel]
-
 -- @[aesop unsafe]
 theorem TmₛD_shift {γₛ : ConₛA Γₛ} {aₛ : TyₛA Aₛ} {γₛD : ConₛD Γₛ γₛ} {aₛD : TyₛD Aₛ aₛ}
   : TmₛD (Γₛ := Γₛ ▹ Aₛ) (γₛ := ⟨γₛ, aₛ⟩) (vshift t) (γₛD, aₛD) = TmₛA_shift.symm ▸ TmₛD t γₛD
@@ -684,17 +692,29 @@ theorem TmₛD_shift {γₛ : ConₛA Γₛ} {aₛ : TyₛA Aₛ} {γₛD : Con�
         u
       rw [ih']
 
--- abbrev ConₛD_cast' (Δₛ : Conₛ) {Γₛ : Conₛ} (σ : Subₛ Γₛ Δₛ) {γₛ : ConₛA Γₛ} {Aₛ : Tyₛ} {aₛ : TyₛA Aₛ}
---   : ConₛD Δₛ (SubₛA σ γₛ) -> ConₛD Δₛ (SubₛA (weaken σ) (γₛ, aₛ)) := (Eq.rec . (SubₛA_weaken _).symm)
+theorem ConₛD_cast_pull_eq
+  {γₛ1 γₛ2 : ConₛA Γₛ} (ha : γₛ1 = γₛ2)
+  {aₛ1 aₛ2 : TyₛA Bₛ} (hb : aₛ1 = aₛ2)
+  : (ConₛD Γₛ γₛ1 × TyₛD Bₛ aₛ1) = (ConₛD Γₛ γₛ2 × TyₛD Bₛ aₛ2)
+  := by cases ha; cases hb; rfl
 
 theorem ConₛD_cast_pull
-  {a1 a2 : ConₛA Δₛ} (ha : a2 = a1)
-  {b1 b2 : TyₛA Bₛ} (hb : b2 = b1)
-  {γₛD : ConₛD Δₛ a1} {aₛD : TyₛD Bₛ b1}
-  (hD : (ConₛD Δₛ a1 × TyₛD Bₛ b1) = (ConₛD Δₛ a2 × TyₛD Bₛ b2))
+  {γₛ1 γₛ2 : ConₛA Γₛ} (ha : γₛ1 = γₛ2)
+  {aₛ1 aₛ2 : TyₛA Bₛ} (hb : aₛ1 = aₛ2)
+  {γₛD : ConₛD Γₛ γₛ1} {aₛD : TyₛD Bₛ aₛ1}
   : (ha ▸ γₛD, hb ▸ aₛD)
-    = (hD ▸ ⟨γₛD, aₛD⟩ : ConₛD Δₛ a2 × TyₛD Bₛ b2) -- ConₛD (Δₛ ▹ Bₛ) ⟨a2, b2⟩
+    = (ConₛD_cast_pull_eq ha hb ▸ ⟨γₛD, aₛD⟩ : ConₛD Γₛ γₛ2 × TyₛD Bₛ aₛ2)
   := by cases ha; cases hb; rfl
+
+theorem promote_ConₛA_ConₛD_eq
+  (hA : @Eq (ConₛA Γₛ)           a₁     a₂ )
+  : @Eq (Sort _) (ConₛD Γₛ a₁) (ConₛD Γₛ a₂)
+  := by cases hA; rfl
+
+theorem promote_ConₛA_ConₛD {a₁ a₂ : ConₛA Γₛ} {z : ConₛD Γₛ a₁}
+  (hA : @Eq (ConₛA Γₛ)           a₁     a₂ )
+  : @Eq (ConₛD Γₛ a₂) (hA ▸ z) ((promote_ConₛA_ConₛD_eq hA) ▸ z)
+  := by cases hA; rfl
 
 theorem SubₛD_weaken {σ : Subₛ Γₛ Δₛ} {γₛD : ConₛD Γₛ γₛ}
   : (SubₛD (Γₛ := Γₛ ▹ Aₛ) (γₛ := ⟨γₛ, aₛ⟩) (weaken σ) ⟨γₛD, aₛD⟩) = SubₛA_weaken σ ▸ (SubₛD σ γₛD)
@@ -703,22 +723,8 @@ theorem SubₛD_weaken {σ : Subₛ Γₛ Δₛ} {γₛD : ConₛD Γₛ γₛ}
   | @cons Δₛ Bₛ σ t ih =>
     simp only [weaken_cons]
     rw [SubₛD, ih, TmₛD_shift, SubₛD]
-    generalize SubₛD σ γₛD = x
-    generalize TmₛD t γₛD = y
-    generalize (SubₛA_weaken (Subₛ.cons σ t)).symm = hA
-    have hD : (ConₛD Δₛ (SubₛA σ γₛ) × TyₛD Bₛ (TmₛA t γₛ))
-      = (ConₛD Δₛ (SubₛA (weaken σ) (γₛ, aₛ)) × TyₛD Bₛ (TmₛA (vshift t) (γₛ, aₛ))) := by rw [TmₛA_shift, SubₛA_weaken]
-    rw [ConₛD_cast_pull (SubₛA_weaken σ) (@TmₛA_shift Γₛ Bₛ t γₛ Aₛ aₛ) hD]
-    generalize (x, y) = z
-    change ConₛD (Δₛ ▹ Bₛ) (SubₛA (.cons σ t) γₛ) at z
-    -- change ConₛD (Δₛ ▹ Bₛ) (SubₛA (.cons σ t) γₛ) = ConₛD (Δₛ ▹ Bₛ) (SubₛA (.cons (weaken σ) (vshift t)) (γₛ, aₛ)) at hD
-    have {A : Sort _} {D : A -> Sort _} {a₁ a₂ : A} {z : D a₁}
-      (hA : @Eq A           a₁     a₂ )
-      (hD : @Eq (Type _) (D a₁) (D a₂))
-      : @Eq (D a₂) (hA ▸ z) (hD ▸ z) := by cases hA; rfl
-    rw [this]
-
-#print axioms SubₛD_weaken
+    rw [ConₛD_cast_pull]
+    rw [promote_ConₛA_ConₛD]
 
 theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γₛD = SubₛA_id ▸ γₛD := by
   induction Γₛ with
@@ -727,15 +733,32 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     let ⟨γₛ, aₛ⟩ := γₛ
     let ⟨γₛD, aₛD⟩ := γₛD
     simp only [Subₛ.id, SubₛD, Subₛ.id]
-    rw [TmₛD_var]
-    rw [VarₛD]
+    rw [TmₛD_var, VarₛD]
     rw [SubₛD_weaken]
     rw [@ih]
+    -- generalize (γₛD, aₛD) = z
+    -- change ConₛD (Γₛ ▹ Aₛ) (γₛ, aₛ) at z
+    -- rw [promote_ConₛA_ConₛD]
+    -- rw [promote_ConₛA_ConₛD]
+    simp only [ConₛD_cast_pull _ (Eq.refl _)]
+    simp only [eq_cast_trans]
+    -- Need to show that these two have the same type. Need to promote the rhs cast
+    -- lhs cast ::: (ConₛD Γₛ γₛ × TyₛD Aₛ aₛ) = (ConₛD Γₛ (SubₛA (weaken (Subₛ.id Γₛ)) (γₛ, aₛ)) × TyₛD Aₛ aₛ)
+    -- Eq.symm SubₛA_id ::: (γₛ, aₛ) = SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ)
+    generalize (γₛD, aₛD) = zD
+    change ConₛD (Γₛ ▹ Aₛ) (γₛ, aₛ) at zD
+    -- have : (γₛ, aₛ) = SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ) := sorry
+    -- have := promote_ConₛA_ConₛD (z := z)
+    -- have
+    --   (hA : (γₛ, aₛ) = SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ))
+    --   : hA ▸ zD = promote_ConₛA_ConₛD_eq (a₁ := (γₛ, aₛ)) (a₂ := SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ)) hA ▸ zD
+    --   := sorry
+    -- conv => rhs; rw [promote_ConₛA_ConₛD]
 
+    -- have := @ConₛD_cast_pull Γₛ ((@SubₛA_id Γₛ γₛ).symm ▸ γₛD)
     sorry
 
-
-#exit
+-- #exit
 
 -- theorem foob : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ Aₛ) -> vshift (SubₛVar v σ) = SubₛVar v (weaken (Aₛ := Bₛ) σ) := by
 --   intro Γₛ σ v
@@ -749,19 +772,16 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
 --     exact ih (σ)
 --     sorry
 
-theorem foob : {Γₛ : Conₛ} -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (weaken (Aₛ := Bₛ) (Subₛ.id Γₛ)) = vshift (SubₛVar v (Subₛ.id Γₛ))
-| Γₛ ▹ Bₛ, .vz => by simp [Subₛ.id, SubₛVar, vshift, weaken]
-| Γₛ ▹ Bₛ, .vs v => by
-  have ih := foob (Bₛ := Bₛ) v
-  have ih₂ := foob (Bₛ := Aₛ) v
-  simp [SubₛVar]
-  rw [Subₛ.id]
-  rw [weaken]
-
-  simp [Subₛ.id, SubₛVar, vshift, weaken]
-  -- exact ih
-  sorry
-  done
+-- theorem foob : {Γₛ : Conₛ} -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (weaken (Aₛ := Bₛ) (Subₛ.id Γₛ)) = vshift (SubₛVar v (Subₛ.id Γₛ))
+-- | Γₛ ▹ Bₛ, .vz => by simp [Subₛ.id, SubₛVar, vshift, weaken]
+-- | Γₛ ▹ Bₛ, .vs v => by
+--   have ih := foob (Bₛ := Bₛ) v
+--   have ih₂ := foob (Bₛ := Aₛ) v
+--   simp [SubₛVar]
+--   -- rw [Subₛ.id]
+--   rw [weaken]
+--   -- simp [Subₛ.id, SubₛVar, vshift, weaken]
+--   sorry
 
 -- theorem foot : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (t : Tmₛ Γₛ Aₛ) -> vshift (SubₛTm t σ) = SubₛTm t (weaken (Aₛ := Bₛ) σ)
 -- | Γₛ ▹  _, .cons σ s, .var .vz => by simp [SubₛTm, SubₛVar, vshift, weaken]
@@ -784,9 +804,7 @@ theorem foo : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ
   let v' := SubₛVar v σ
   -- have ih := foo Γₛ σ v'
   sorry
-
   done
-
 
 theorem SubₛVar_id : (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) = .var v
 | .vz => by rw [Subₛ.id, SubₛVar]
@@ -962,7 +980,7 @@ theorem Subₚ_Tmₚ {σ : Subₚ Γ Δ} {t : Tmₚ Δ A} : TmₚA (SubₚTm t �
 
 -- # Sort and Points Constructors
 
-set_option pp.universes true
+-- set_option pp.universes true
 
 -- The paper assumes `u := 0` but we generalize a little.
 universe u
@@ -1025,15 +1043,11 @@ theorem mkTyₛ_app (f : Tmₛ Ωₛ (SPi T Aₛ)) (τ : T) : mkTyₛ.{u, v} Ω�
 
 theorem mkConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) -> TmₛA.{u, (max u v) + 1} t (@mkConₛ'.{u, v} Ωₛ Ωₚ Γₛ σ) = @mkTyₛ.{u, v} Ωₛ Ωₚ Aₛ (SubₛTm t σ)
 | t                 , .nil      => False.elim (Tmₛ_emptyCtx t)
-| .var .vz          , .cons σ s => by rw [mkConₛ', TmₛA, VarₛA]; rfl
+| .var .vz          , .cons σ s => rfl
 | .var (.vs v)      , .cons σ s => by
   have ih := mkConₛ_coherent (.var v) σ
-  simp_all only [TmₛA, SubₛTm, mkConₛ', VarₛA, SubₛVar]
-| .app (A := Cₛ) f τ, .cons σ s => by rw [TmₛA, mkConₛ_coherent f (.cons σ s), SubₛTm]; rfl
-
--- same as the above, but feels more category-theory-y.
--- example (t : Tmₛ Γₛ Aₛ) : (TmₛA t) ∘ (@mkConₛ' Ωₛ Ω Γₛ) = (@mkTyₛ Ωₛ Ω _) ∘ (SubₛTm t)
---   := funext <| mkConₛ_coherent t
+  simp_all only [TmₛA, SubₛTm, VarₛA, SubₛVar]
+| .app (A := Cₛ) f τ, .cons σ s => by rw [TmₛA_app, mkConₛ_coherent f (.cons σ s), SubₛTm]; rfl
 
 example
   : @TyₚA Vₛ (PPi Nat fun n => @El Vₛ (.app (.var vz) n)) (mkConₛ Vₛ (Vₚ String))
@@ -1075,7 +1089,6 @@ def mkConₚ' : Subₚ Ωₚ Γ -> ConₚA Γ (mkConₛ Ωₛ Ωₚ)
 
 def mkConₚ := mkConₚ' _ _ (Subₚ.id Ωₚ)
 
-set_option pp.universes false in
 -- Lemma 18
 theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ωₚ Γ) -> TmₚA t (@mkConₚ' Ωₛ Ωₚ Γ σ) = @mkTyₚ Ωₛ Ωₚ A (SubₚTm t σ)
 | t                 , .nil      => False.elim (Tmₚ_emptyCtx t)
@@ -1120,10 +1133,10 @@ def elimTyₛ : {Aₛ : Tyₛ.{u}} -> (t : Tmₛ.{u} Ωₛ Aₛ) -> TyₛS.{u, _
   -- have (ttt : TmₛA a (mkConₛ (Ω:=Ω))) : TyₛS.{0, 1} U (TmₛD a ωₛD ( (TmₚA (aux ▸ ttt) (mkConₚ (Ω:=Ω))))) = TmₛD a ωₛD ttt := sorry
   -- have (t : TmₛA a (@mkConₛ Ωₛ Ω)) : TyₛS U (TmₛD a ωₛD (TmₚA t (@mkConₚ Ωₛ Ω))) = sorry := sorry
 
-  -- fun (t : TmₛA a mkConₛ) => by
+  -- `t` is the thing we are eliminating.
+  fun (t : TmₛA a (mkConₛ Ωₛ Ωₚ)) => by
     -- ⊢ TmₛD a ωₛD t
-
-    -- let ret := TmₚD t ωD
+    -- let ret := TmₚD t ωₚD
     -- exact ret
     sorry
 | SPi T Aₛ, t =>
