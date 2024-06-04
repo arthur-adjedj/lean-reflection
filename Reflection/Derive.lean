@@ -5,28 +5,55 @@ import Qq
 open Lean Meta Elab Term Qq
 open Reflection MutualInductive
 
+set_option pp.fieldNotation.generalized false
+
 namespace Reflection.MutualInductive.Derive
+
+inductive Vec : Nat -> Type
+| nil : Vec 0
+| cons : (n : Nat) -> String -> Vec n -> Vec (n + 1)
+
+/-- Given for example `q(Vec)`, returns its InductiveVal. -/
+def resolve (T : TSyntax `term) : TermElabM InductiveVal := do
+  let T := (<- elabTerm T none)
+  let .const name _ := T.getAppFn | throwError "expected a simple const"
+  getConstInfoInduct name
+
+def _root_.List.indexOf [BEq α] : List α -> α -> Option Nat
+| []     , _ => none
+| x :: xs, a => if x == a then some 0 else (indexOf xs a).map (. + 1)
+
+
 
 /-- Reads in `Nat -> Type`. -/
 partial def getTyₛ (τ : Q(Type (u+1))) : MetaM Q(Tyₛ.{u}) := do
   forallBoundedTelescope τ (some 1) fun var body => do
     if var.isEmpty then
-      return q(Tyₛ.U.{u})
+      -- unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
+      unless <- isDefEq body q(Type u) do throwError "getTyₛ isDefEq failed between {body} and {q(Type u)}"
+      return <- instantiateMVars q(Tyₛ.U.{u})
     else
       let var := var[0]!
-      let ty : Q(Type u) <- var.fvarId!.getType
+      let ty : Q(Type u) <- var.fvarId!.getType -- for example `ty ≣ Nat`
+      unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
       let rest : Q(Tyₛ.{u}) <- getTyₛ body -- rest is for example `var : X ⊢ SPi ...`
       let rest : Q($ty -> Tyₛ.{u}) <- mkLambdaFVars #[var] rest
-      return q(Tyₛ.SPi.{u} $ty $rest)
+      return <- instantiateMVars q(Tyₛ.SPi.{u} $ty $rest)
 
-set_option pp.universes true in
-#print Nₛ
-#eval getTyₛ (u := .zero) q(Type)
-#eval getTyₛ (u := .zero) q(Nat -> Type)
+partial def getConₛ (block : InductiveVal) : MetaM Q(Conₛ.{u}) := do
+  block.all.foldlM (fun (acc : Q(Conₛ.{u})) I => do
+    let info <- getConstInfoInduct I
+    let ty : Q(Tyₛ.{u}) <- getTyₛ info.type
+    return q(Conₛ.ext $acc $ty)
+  ) q(Conₛ.nil.{u})
 
-def _root_.List.indexOf [BEq α] : List α -> α -> Option Nat
-| []     , _ => none
-| x :: xs, a => if x == a then some 0 else (indexOf xs a).map (. + 1)
+elab "getTyₛ! " T:term:max : term => do
+  getTyₛ (u := <- mkFreshLevelMVar) (<- resolve T).type
+elab "getConₛ! " T:term:max : term => do
+  getConₛ (u := <- mkFreshLevelMVar) (<- resolve T)
+
+def testConₛ := getConₛ! Vec
+#print testConₛ
 
 partial def Conₛ.recMeta {motive : Q(Type u)} (Γₛ : Q(Conₛ.{u}))
   (case_nil : MetaM Q($motive))
@@ -73,10 +100,9 @@ def ctx : Q(Conₛ.{0}) := q((⬝ ▹ Tyₛ.U) ▹ Tyₛ.U)
 #eval getVarₛ (u := 0) 0 ctx q(Tyₛ.U)
 #eval getVarₛ (u := 0) 1 ctx q(Tyₛ.U)
 
-#check @Tmₛ.app
-
 /-- Reads in `Vec 123`. Make sure that `mblock` has the names of `Γₛ` in the same order. -/
 partial def getTmₛ (mblock : List Name) (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Tyₛ.{u})) (T : Q(TyₛA.{u, u} $Aₛ)) : MetaM Q(Tmₛ.{u} $Γₛ $Aₛ) := do
+  let T : Q(TyₛA.{u, u} $Aₛ) <- whnf T
   match T with
   | .const name _ =>
     let some idx := mblock.indexOf name | throwError "getTmₛ case Tyₛ.U: {T} does not belong to mutual block {mblock}"
@@ -85,57 +111,63 @@ partial def getTmₛ (mblock : List Name) (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Ty�
   | .app f x => -- case `Vec 123 : TyₛA Aₛ`
     let ⟨u', ⟨X, x⟩⟩ <- inferTypeQ x -- x : X
     unless <- isLevelDefEq (.succ u) u' do throwError "getTmₛ level defeq failed, u ≣ {u}, but u' ≣ {u'}, with X ≣ {X}"
-    -- let fTy <- inferType f
     let Bₛ : Q($X -> Tyₛ.{u}) <- mkFreshExprMVarQ q($X -> Tyₛ.{u})
     let fTy <- inferType f -- q(Nat -> Type)
     let fTy_code : Q(Tyₛ.{u}) <- getTyₛ (u := u) fTy -- q("Nat -> Type")
-    let fTy_code_A : Q(Type (u+1)) := q(TyₛA.{u,u} $fTy_code) -- q("Nat -> Type"ᴬ) ≣ q((x : $X) -> "$Bₛ x"ᴬ)
-    -- let fTy_expected := q((x : $X) -> TyₛA.{u,u} ($Bₛ x))
-    unless <- isDefEq fTy_code_A q((x : $X) -> TyₛA.{u,u} ($Bₛ x)) do
-      throwError "getTmₛ defeq type of f to function type failed, f : {<- inferType f}, X ≣ {X}, x ≣ {x}, Bₛ ≣ {Bₛ}\nfTy ≣ {()}\nfTy_code ≣ asdf"
-    throwError "stop\nfTy ≣ {fTy}\nfTy_code ≣ {fTy_code}\nfTy_code_A ≣ {fTy_code_A}\nfTy_code_A₂ ≣ {q((x : $X) -> TyₛA.{u,u} ($Bₛ x))}"
-
-
-    let f : Q((x : $X) -> TyₛA.{u,u} ($Bₛ x)) := f -- can do this because of the defeq check
-    let f : Q(TyₛA.{u,u} ($Bₛ $x)) := f -- can do this because of the defeq check
-
-    let sub <- getTmₛ mblock Γₛ fTy_code q($f)
-    return mkAppN q(Tmₛ.app.{u}) #[] --#[Γₛ, X, Bₛ, f, x]
+    let fTy_code_A : Q(Type (u+1)) := q(TyₛA.{u,u} $fTy_code) -- q("Nat -> Type"ᴬ) ≣ fTy ≣ q(Nat -> "Type"ᴬ)
+    unless <- isDefEq fTy_code_A fTy do throwError "getTmₛ defeq failed, (TyₛA ∘ getTyₛ) doesn't roundtrip somehow\nfTy ≣ {fTy}\nfTy_code_A ≣ {fTy_code_A}"
+    unless <- isDefEq fTy_code_A q((x : $X) -> TyₛA.{u,u} ($Bₛ x)) do throwError "getTmₛ defeq failed \nfTy ≣ {fTy}\nexpected ≣ {q((x : $X) -> TyₛA.{u,u} ($Bₛ x))}"
+    unless <- isDefEq Aₛ q($Bₛ $x) do throwError "getTmₛ defeq failed\nAₛ ≣ {Aₛ}\nBₛ x ≣ {q($Bₛ $x)}"
+    let f : Q((x : $X) -> TyₛA.{u,u} ($Bₛ $x)) := f -- this is okay because of the defeq checks above
+    let fTm /-: Q(Tmₛ $Γₛ (Tyₛ.SPi $X $Bₛ))-/ <- getTmₛ mblock Γₛ (mkApp2 q(Tyₛ.SPi.{u}) X Bₛ) f
+    let ret := mkAppN q(@Tmₛ.app.{u}) #[Γₛ, X, Bₛ, fTm, x]
+    let ret <- instantiateMVars ret
+    return ret
   | _ => throwError "oh no, getTmₛ {T}"
 
-#check Vₛ
-inductive Vec : Nat -> Type
-#eval getTmₛ (u := .zero) [``Nat] q(Nₛ) q(.U) q(Nat)
-#eval getTmₛ (u := .zero) [``Nat] q(Nₛ) q(.U) q(Nat) >>= inferType
-#eval getTmₛ (u := .zero) [``Vec] q(Vₛ) q(.U) q(Vec 123)
--- #eval getTmₛ (u := .zero) [``Vec] q(Vₛ) q(.U) q(Vec 123)
+elab "getTmₛ! " T:term:max : term => do
+  let ind <- resolve T
+  let T <- elabTerm T none
+  getTmₛ (u := <- mkFreshLevelMVar) ind.all (<- getConₛ ind) (<- getTyₛ (<- inferType T)) T
 
-#exit
+namespace Test
+  set_option linter.unusedVariables false
+  inductive AA : Nat -> Type
+  | aa : AA 44
+  | aaa : AA n
+
+  inductive TT : (n : Nat) -> AA n -> Type
+  | cc : (n : Nat) -> Fin n -> TT 44 .aa
+  | ccc : (n : Nat) -> TT (.succ n) .aaa -> TT n .aaa
+
+  example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) (Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U)
+    := getTmₛ! TT
+  example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) ((fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) 44)
+    := getTmₛ! (TT 44)
+  example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) ((fun a => Tyₛ.U) AA.aa)
+    := getTmₛ! (TT 44 .aa)
+  example := getTmₛ! Vec
+  example := getTmₛ! (Vec 123)
+end Test
 
 /-- Parse a constructor type, for example `(n : Nat) -> Even n -> Odd (n+1)`. -/
 partial def getTyₚ (mblock : List Name) (Γₛ : Q(Conₛ.{u})) (tys : Expr) : MetaM Q(Tyₚ.{u} $Γₛ) := do
   forallBoundedTelescope tys (some 1) fun var body => do
     if var.isEmpty then -- `El T`
-      let T <- getTmₛ Γₛ q(Tyₛ.U.{u}) body
+      let T <- getTmₛ mblock Γₛ q(Tyₛ.U.{u}) body
       return q(Tyₚ.El.{u} $T)
     else -- PFunc or PPi
       let var := var[0]!
       let ty : Q(Type u) <- var.fvarId!.getType
       let .const tyF _ := ty.getAppFn | throwError "getTyₚ parameter {ty}"
       if mblock.contains tyF then -- PFunc
-        let T : Q(Tmₛ.{u} $Γₛ Tyₛ.U) <- getTmₛ Γₛ q(Tyₛ.U.{u}) ty
+        let T : Q(Tmₛ.{u} $Γₛ Tyₛ.U) <- getTmₛ mblock Γₛ q(Tyₛ.U.{u}) ty
         let rest <- getTyₚ mblock Γₛ body
         return q(Tyₚ.PFunc.{u} $T $rest)
       else -- PPi
-        let rest : Q($ty -> Tyₚ.{u} $Γₛ) <- getTyₚ mblock Γₛ body
+        let rest : Q(Tyₚ.{u} $Γₛ) <- getTyₚ mblock Γₛ body
+        let rest : Q($ty -> Tyₚ.{u} $Γₛ) <- mkLambdaFVars #[var] rest
         return q(Tyₚ.PPi.{u} $ty $rest)
-
-partial def getConₛ (block : InductiveVal) : MetaM Q(Conₛ.{u}) := do
-  block.all.foldlM (fun (acc : Q(Conₛ.{u})) I => do
-    let info <- getConstInfoInduct I
-    let ty : Q(Tyₛ.{u}) <- getTyₛ info.type
-    return q(Conₛ.ext $acc $ty)
-  ) q(Conₛ.nil.{u})
 
 partial def getConₚ (block : InductiveVal) (Γₛ : Q(Conₛ.{u})) : MetaM Q(Conₚ.{u} $Γₛ) := do
   let allCtors : List Name <- block.all.foldlM (fun (acc : List Name) I => do
@@ -148,91 +180,53 @@ partial def getConₚ (block : InductiveVal) (Γₛ : Q(Conₛ.{u})) : MetaM Q(C
     return q(Conₚ.ext $acc $ty)
   ) q(Conₚ.nil.{u})
 
-elab "getConₛ! " i:ident : term => do
-  let ind <- getConstInfoInduct i.getId
-  let u <- mkFreshLevelMVar
-  getConₛ (u := u) ind
+elab "getTyₚ! " ctor:term:max : term => do
+  let .const name _ <- Expr.getAppFn <$> elabTerm ctor none | throwError "{ctor} is not a constant"
+  let ctorInfo <- getConstInfoCtor name
+  let indInfo <- getConstInfoInduct ctorInfo.induct
+  getTyₚ (u := <- mkFreshLevelMVar) indInfo.all (<- getConₛ indInfo) ctorInfo.type
+elab "getConₚ! " T:term:max : term => do
+  let T <- resolve T
+  getConₚ (u := <- mkFreshLevelMVar) T (<- getConₛ T)
 
-#check Vec
-#check getConₛ! Vec
+#check getTyₚ! Vec.nil
+#check getTyₚ! Vec.cons
 
-partial def skipParams (tys : Expr) (nParams : Nat) (cont : Expr -> MetaM Expr) : MetaM Expr :=
-  match nParams with
-  | 0 => cont tys
-  | nParams + 1 => do
-    forallBoundedTelescope tys (some 1) fun var body => do
-      let body' <- skipParams body nParams cont
-      if body'.containsFVar var[0]!.fvarId! then mkLambdaFVars var body'
-      else return body'
+namespace Test
+  mutual
+    inductive Even : Nat -> Type
+    | zero : Even 0
+    | even : Odd n -> Even (n+1)
+    inductive Odd : Nat -> Type
+    | odd : Even n -> Odd (n+1)
+  end
+  #check getTyₚ! Even.zero
+  #check getTyₚ! Even.even
+  #check getTyₚ! Odd.odd
+  #check getConₚ! Even
+  #check getConₚ! Odd
+  example : getConₚ! Even = getConₚ! Odd := rfl
+  example := getTyₚ! Even.zero
+  example := getTyₚ! Even.even
+  example := getTyₚ! Odd.odd
+  example := getConₚ! Even
+  example := getConₚ! Odd
 
-elab "getTyₛ! " tys:term : term => do
-  let tys <- elabTerm tys none
-  let u <- mkFreshLevelMVar
-  getTyₛ (u:=u) tys
+  #check getTyₚ! TT.ccc
+  #check getTyₚ! TT.cc
+  example := getTyₚ! TT.cc
+  example := getTyₚ! TT.ccc
+  example := getTyₚ! Vec.nil
+  example := getTyₚ! Vec.cons
+  example := getConₚ! TT
+  example := getConₚ! Vec
+end Test
 
-elab "Tyₛ% " T:term : term => do
-  let T <- elabTerm T none
-  let ⟨I, args⟩ := T.getAppFnArgs
-  let info <- getConstInfoInduct I
-  if info.numParams != args.size then throwError m!"Expected {info.numParams} params."
-  let u <- mkFreshLevelMVar
-  skipParams info.type info.numParams (getTyₛ (u := u))
-
-elab "Conₛ% " T:term : term => do
-  let T <- elabTerm T none
-  let ⟨I, args⟩ := T.getAppFnArgs
-  let info <- getConstInfoInduct I
-  if info.numParams != args.size then throwError m!"Expected {info.numParams} params."
-  let u <- mkFreshLevelMVar
-  getConₛ (u := u) info
-
-elab "Conₚ% " T:term : term => do
-  let T <- elabTerm T none
-  let ⟨I, args⟩ := T.getAppFnArgs
-  let info <- getConstInfoInduct I
-  if info.numParams != args.size then throwError m!"Expected {info.numParams} params."
-  let u <- mkFreshLevelMVar
-  getConₛ (u := u) info
-
-elab "%Tyₚ " i:ident : term => do
-  let ind <- getConstInfoInduct i.getId
-  getTyₚ ind.all
-
-mutual
-  inductive Even : Nat -> Type
-  | zero : Even 0
-  | even : Odd n -> Even (n+1)
-  inductive Odd : Nat -> Type
-  | odd : Even n -> Odd (n+1)
-end
-
-#check getTyₛ! (Nat -> Type)
-#check Tyₛ% (Vec String)
-#check Conₛ% (Vec String)
-#check Conₛ% (Even)
--- example
-
--- /-- Given a `T` such as `Vec 123 : Type`, produce `Tmₛ.app (Tmₛ.var Varₛ.vz) 123 : Tmₛ _ Tyₛ.U`.
---   Given `Vec : Nat -> Type`, produce `Tmₛ.var Varₛ.vz : Tmₛ _ (Tyₛ.SPi Nat fun _ => Tyₛ.U)`. -/
--- private partial def getTmₛ (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Tyₛ.{u})) (T : Expr) : MetaM Q(Tmₛ.{u} $Γₛ $Aₛ) := do
---   match <- Meta.whnf T with
---   | .app t u =>
---     let t := t
---     let tt <- getTmₛ Γₛ Aₛ t
---     sorry
---     -- q(Tmₛ.app )
---   | .fvar _ => q(Tmₛ.var Varₛ.vz)
---   | _ => throwError "uh oh"
-
--- elab "%Tmₛ " T:term : term => do
---   let T <- elabTerm T none
---   -- let  := T.getAppFn
---   let ind <- getConstInfoInduct (getAppFn)
---   getTyₚ ind.type
-
-elab "%Tyₚ " i:ident : term => do
-  let ind <- getConstInfoInduct i.getId
-  getTyₚ ind.type
-
-#check Vec
-#check %Tyₛ Vec
+-- partial def skipParams (tys : Expr) (nParams : Nat) (cont : Expr -> MetaM Expr) : MetaM Expr :=
+--   match nParams with
+--   | 0 => cont tys
+--   | nParams + 1 => do
+--     forallBoundedTelescope tys (some 1) fun var body => do
+--       let body' <- skipParams body nParams cont
+--       if body'.containsFVar var[0]!.fvarId! then mkLambdaFVars var body'
+--       else return body'
