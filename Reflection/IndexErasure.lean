@@ -1,4 +1,4 @@
-import Reflection.MutualInductive
+import Reflection.MInd
 import Qq
 
 namespace Reflection.IndexErasure
@@ -6,7 +6,7 @@ namespace Reflection.IndexErasure
 set_option pp.fieldNotation false
 -- set_option pp.universes true
 
-open Reflection MutualInductive
+open Reflection MInd
 open Tyₛ Tyₚ Varₛ Varₚ
 
 -- # Erasure

@@ -1,7 +1,7 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 import Reflection.Util.EqHelpers
 
-namespace Reflection.MutualInductive
+namespace Reflection.MInd
 /-
   Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
   Agda source for the above lives at https://bitbucket.org/javra/inductive-families
