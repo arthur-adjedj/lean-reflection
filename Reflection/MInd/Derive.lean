@@ -1,13 +1,13 @@
 import Lean
-import Reflection.MutualInductive
+import Reflection.MInd
 import Qq
 
 open Lean Meta Elab Term Qq
-open Reflection MutualInductive
+open Reflection MInd
 
 set_option pp.fieldNotation.generalized false
 
-namespace Reflection.MutualInductive.Derive
+namespace Reflection.MInd.Derive
 
 inductive Vec : Nat -> Type
 | nil : Vec 0
