@@ -221,12 +221,3 @@ namespace Test
   example := getConₚ! TT
   example := getConₚ! Vec
 end Test
-
--- partial def skipParams (tys : Expr) (nParams : Nat) (cont : Expr -> MetaM Expr) : MetaM Expr :=
---   match nParams with
---   | 0 => cont tys
---   | nParams + 1 => do
---     forallBoundedTelescope tys (some 1) fun var body => do
---       let body' <- skipParams body nParams cont
---       if body'.containsFVar var[0]!.fvarId! then mkLambdaFVars var body'
---       else return body'

@@ -217,6 +217,10 @@ def mkGConₚ.{u} (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ)
 /-
   # Lowering
 
+  We can't determine a single lowered context, and instead have the E and G contexts.
+  This makes sense, since we actually have two inductive types E and G.
+  We still want to pretend that there is an inductive type L := Σ E G, with its own eliminator.
+
   ## Lowering Sorts
 -/
 
@@ -234,7 +238,10 @@ def mkLTyₛ' : (Aₛ : Tyₛ) -> (aₛE : ETyₛA.{u} Aₛ) -> GTyₛA.{u, u+2}
 def mkLTyₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {Aₛ : Tyₛ} (t : Tmₛ Ωₛ Aₛ) : TyₛA.{u, u+2} Aₛ
   := mkLTyₛ' Aₛ (mkETyₛ.{u} Ωₛ Ωₚ t) (mkGTyₛ.{u,u} Ωₛ Ωₚ t)
 
+#check mkConₛ
 -- def mkLConₛ := hard to define...
+def mkLConₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : ConₛA Ωₛ :=
+  sorry
 
 -- ## Lowering Points
 -- def mkLTyₚ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {A : Tyₚ Ωₛ} (t : Tmₚ Ωₚ A) : TyₚA A (mkLConₛ ...) := ...
