@@ -782,9 +782,7 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     let ⟨γₛ, aₛ⟩ := γₛ
     let ⟨γₛD, aₛD⟩ := γₛD
     simp only [Subₛ.id, SubₛD, Subₛ.id]
-    rw [TmₛD_var, VarₛD]
-    rw [SubₛD_weaken]
-    rw [@ih]
+    rw [TmₛD_var, VarₛD, SubₛD_weaken, @ih]
     generalize SubₛA_id.symm = h₁
     generalize (SubₛA_weaken (Subₛ.id Γₛ)).symm = h₂
     generalize (@SubₛA_id (Γₛ ▹ Aₛ) (γₛ, aₛ)).symm = h₃
@@ -796,69 +794,38 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     generalize (γₛD, aₛD) = z
     change ConₛD (Γₛ ▹ Aₛ) (γₛ, aₛ) at z
     have := promote_ConₛA_ConₛD (z := z) h₃
-    rw [this]
-    rw [eq_cast_trans]
+    rw [this, eq_cast_trans]
 
--- theorem foob : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ Aₛ) -> vshift (SubₛVar v σ) = SubₛVar v (weaken (Aₛ := Bₛ) σ) := by
---   intro Γₛ σ v
---   induction v with
---   | vz =>
---     let .cons σ s := σ
---     simp [SubₛVar, vshift, weaken]
---   | vs v ih =>
---     let .cons σ s := σ
---     simp [SubₛVar, vshift, weaken]
---     exact ih (σ)
---     sorry
-
--- theorem foob : {Γₛ : Conₛ} -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (weaken (Aₛ := Bₛ) (Subₛ.id Γₛ)) = vshift (SubₛVar v (Subₛ.id Γₛ))
--- | Γₛ ▹ Bₛ, .vz => by simp [Subₛ.id, SubₛVar, vshift, weaken]
--- | Γₛ ▹ Bₛ, .vs v => by
---   have ih := foob (Bₛ := Bₛ) v
---   have ih₂ := foob (Bₛ := Aₛ) v
---   simp [SubₛVar]
---   -- rw [Subₛ.id]
---   rw [weaken]
---   -- simp [Subₛ.id, SubₛVar, vshift, weaken]
---   sorry
-
--- theorem foot : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (t : Tmₛ Γₛ Aₛ) -> vshift (SubₛTm t σ) = SubₛTm t (weaken (Aₛ := Bₛ) σ)
--- | Γₛ ▹  _, .cons σ s, .var .vz => by simp [SubₛTm, SubₛVar, vshift, weaken]
--- | Γₛ ▹ Bₛ, .cons σ s, .var (.vs v) => by
---   -- let v' := SubₛVar v σ
---   have : sizeOf (SubₛVar v σ) < sizeOf (Tmₛ.var (.vs v) : Tmₛ (Γₛ ▹ Bₛ) Aₛ) := sorry
---   have ih := foot _ (Bₛ := Bₛ) (.cons σ s) (SubₛVar v σ)
---   simp [SubₛTm, SubₛVar, vshift, weaken]
---   simp [SubₛTm, SubₛVar, vshift, weaken] at ih
---   sorry
---   done
--- | Γₛ, σ, .app (A := Aaa) t u => by
---   simp [SubₛVar, vshift, weaken]
---   done
-
-theorem foo : (Γₛ : Conₛ) -> (σ : Subₛ Γₛ Γₛ) -> (v : Varₛ Γₛ Aₛ) -> vshift (SubₛVar v σ) = SubₛVar v (weaken (Aₛ := Bₛ) σ)
-| Γₛ ▹ Bₛ, .cons σ s, .vz => by simp [SubₛVar, vshift, weaken]
-| Γₛ ▹ Bₛ, .cons σ s, .vs v => by
-  simp [SubₛVar, vshift, weaken]
-  let v' := SubₛVar v σ
-  -- have ih := foo Γₛ σ v'
-  sorry
+@[aesop unsafe]
+theorem SubₛVar_vshift_weaken (Γₛ : Conₛ)  (σ : Subₛ Δₛ Γₛ) (v : Varₛ Γₛ Aₛ) : SubₛVar v (weaken (Aₛ := Bₛ) σ) = vshift (SubₛVar v σ)
+:= by
+  induction v with
+  | vz => match σ with | .cons .. => rfl
+  | vs v ih =>
+    match σ with
+    | .cons σ t =>
+      rw [weaken_cons]
+      rw [SubₛVar]
+      rw [SubₛVar]
+      simp [ih]
   done
 
-theorem SubₛVar_id : (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) = .var v
-| .vz => by rw [Subₛ.id, SubₛVar]
-| .vs v => by
-  have ih := SubₛVar_id v
-  rw [Subₛ.id, SubₛVar]
-  rw [<- foo]
+@[simp]
+theorem SubₛVar_id : (Γₛ : Conₛ) -> (Aₛ : Tyₛ) -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) = .var v
+| _, _, .vz => by rw [Subₛ.id, SubₛVar]
+| Γₛ ▹ Bₛ, Aₛ, .vs v => by
+  have ih := SubₛVar_id _ _ v
+  rw [Subₛ.id]
+  rw [SubₛVar]
+  rw [SubₛVar_vshift_weaken]
   rw [ih]
   rfl
 
+@[simp]
 theorem SubₛTm_id : {Γₛ : Conₛ} -> (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
 | .nil, t => False.elim <| Tmₛ_emptyCtx t
 | .ext Γₛ Bₛ, .var v => by simp only [SubₛVar_id, SubₛTm]
 | .ext Γₛ Bₛ, .app (A:=Cₛ) t u => by rw [SubₛTm, SubₛTm_id t]
-
 
 
 -- ## Now for Points...
