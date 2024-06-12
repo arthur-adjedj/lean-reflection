@@ -808,7 +808,6 @@ theorem SubₛVar_vshift_weaken (Γₛ : Conₛ)  (σ : Subₛ Δₛ Γₛ) (v :
       rw [SubₛVar]
       rw [SubₛVar]
       simp [ih]
-  done
 
 @[simp]
 theorem SubₛVar_id : (Γₛ : Conₛ) -> (Aₛ : Tyₛ) -> (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) = .var v
@@ -859,14 +858,16 @@ def SubₚTm : {A : Tyₚ Γₛ} -> Tmₚ Δ A -> Subₚ Γ Δ -> Tmₚ Γ A
 | _, .app (A := _A) t u, σ => .app (SubₚTm t σ) u
 | _, .appr (A := A) t u, σ => .appr (SubₚTm t σ) (SubₚTm u σ)
 
-def vsₚ : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> Tmₚ (Γ ▹ B) A
+def vshiftₚ : {A : Tyₚ Γₛ} -> Tmₚ Γ A -> Tmₚ (Γ ▹ B) A
 | _, .var v => .var (.vs v)
-| _, .app  (A := _A) t u => .app  (vsₚ t) u
-| _, .appr (A := _A) t u => .appr (vsₚ t) (vsₚ u)
+| _, .app  (A := _A) t u => .app  (vshiftₚ t) u
+| _, .appr (A := _A) t u => .appr (vshiftₚ t) (vshiftₚ u)
 
 def weakenₚ.{u} : {Γ Δ : Conₚ.{u} Γₛ} -> {A : Tyₚ.{u} Γₛ} -> Subₚ.{u} Γ Δ -> Subₚ (Γ ▹ A) Δ
 | _, ⬝  , _, .nil => .nil
-| _, _ ▹ _, _, .cons σ t => .cons (weakenₚ σ) (vsₚ t)
+| _, _ ▹ _, _, .cons σ t => .cons (weakenₚ σ) (vshiftₚ t)
+
+theorem weakenₚ_cons : @weakenₚ _ Γₚ (Δₚ ▹ Bₚ) Aₚ (.cons σ t) = Subₚ.cons (weakenₚ σ) (vshiftₚ t) := rfl
 
 def Subₚ.id : (Γ : Conₚ Γₛ) -> Subₚ Γ Γ
 | ⬝ => .nil
@@ -877,22 +878,6 @@ theorem Tmₚ_emptyCtx (t : Tmₚ ⬝ A) : False := by
   | var v => cases v
   | app _ _ ih => exact ih
   | appr _ _ ih => exact ih
-
-
-theorem SubₚTm_id (t : Tmₚ Γ A) : SubₚTm t (Subₚ.id Γ) = t := by
-  sorry
---   -- induction Γ with
---   -- | nil => exfalso; exact Tmₚ_emptyCtx t
---   -- | ext Γ B ih =>
---   --   rw [Subₚ.id]
---   --   rw [weakenₚ]
---   --   done
---   induction t with
---   | var v =>
---     rw [SubₚTm]
---     sorry
---   | app t u ih => sorry
---   | appr t u ihₜ ihᵤ => sorry
 
 def VarₚA : Varₚ Γ A -> ConₚA Γ γₛ -> TyₚA A γₛ
 | .vz  , ⟨_, a⟩ => a
@@ -934,9 +919,39 @@ theorem Subₚ_Tmₚ {σ : Subₚ Γ Δ} {t : Tmₚ Δ A} : TmₚA (SubₚTm t �
   | app t u ih => simp_all only [SubₚTm, TmₚA]
   | appr t u ihₜ ihᵤ => simp_all only [SubₚTm, TmₚA]
 
--- # Sort and Points Constructors
+@[aesop unsafe]
+theorem SubₚVar_vshift_weaken (Γₚ : Conₚ Γₛ)  (σ : Subₚ Δₚ Γₚ) (v : Varₚ Γₚ Aₚ) : SubₚVar v (weakenₚ (A := Bₚ) σ) = vshiftₚ (SubₚVar v σ)
+:= by
+  induction v with
+  | vz => match σ with | .cons .. => rfl
+  | vs v ih =>
+    match σ with
+    | .cons σ t =>
+      rw [weakenₚ_cons]
+      rw [SubₚVar]
+      rw [SubₚVar]
+      simp [ih]
 
--- set_option pp.universes true
+@[simp]
+theorem SubₚVar_id : (Γₚ : Conₚ Γₛ) -> (Aₚ : Tyₚ Γₛ) -> (v : Varₚ Γₚ Aₚ) -> SubₚVar v (Subₚ.id Γₚ) = .var v
+| _, _, .vz => by rw [Subₚ.id, SubₚVar]
+| Γₛ ▹ Bₛ, Aₛ, .vs v => by
+  have ih := SubₚVar_id _ _ v
+  rw [Subₚ.id]
+  rw [SubₚVar]
+  rw [SubₚVar_vshift_weaken]
+  rw [ih]
+  rfl
+
+@[simp]
+theorem SubₚTm_id : {Γₚ : Conₚ Γₛ} -> (t : Tmₚ Γₚ A) -> SubₚTm t (Subₚ.id Γₚ) = t
+| .nil, t => False.elim <| Tmₚ_emptyCtx t
+| .ext Γₛ Bₛ, .var v => by simp only [SubₚVar_id, SubₚTm]
+| .ext Γₛ Bₛ, .app (A:=Cₛ) t u => by rw [SubₚTm, SubₚTm_id t]
+| .ext Γₛ Bₛ, .appr (A:=Cₛ) t u => by rw [SubₚTm, SubₚTm_id t, SubₚTm_id u]
+
+
+-- # Sort and Points Constructors
 
 -- The paper assumes `u := 0` but we generalize a little.
 universe u
