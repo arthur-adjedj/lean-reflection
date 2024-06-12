@@ -1,5 +1,6 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 import Reflection.Util.EqHelpers
+import Aesop
 
 namespace Reflection.MInd
 /-
@@ -726,6 +727,14 @@ theorem SubₛD_weaken {σ : Subₛ Γₛ Δₛ} {γₛD : ConₛD Γₛ γₛ}
     rw [ConₛD_cast_pull]
     rw [promote_ConₛA_ConₛD]
 
+#check @SubₛA_id
+/- theorem SubₛA_id : SubₛA (Subₛ.id Γₛ) γₛ = γₛ := by
+    induction Γₛ with
+    | nil => rfl
+    | ext Γₛ Aₛ ih =>
+      let ⟨γₛ, aₛ⟩ := γₛ
+      simp only [Subₛ.id, SubₛA, TmₛA, VarₛA, SubₛA_weaken, ih] -/
+
 theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γₛD = SubₛA_id ▸ γₛD := by
   induction Γₛ with
   | nil => rfl
@@ -736,6 +745,8 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     rw [TmₛD_var, VarₛD]
     rw [SubₛD_weaken]
     rw [@ih]
+    -- simp [ConₛD_cast_pull, promote_ConₛA_ConₛD_eq, ConₛD_cast_pull_eq]
+
     -- generalize (γₛD, aₛD) = z
     -- change ConₛD (Γₛ ▹ Aₛ) (γₛ, aₛ) at z
     -- rw [promote_ConₛA_ConₛD]
@@ -747,6 +758,7 @@ theorem SubₛD_id {γₛD : ConₛD Γₛ γₛ} : SubₛD (Subₛ.id Γₛ) γ
     -- Eq.symm SubₛA_id ::: (γₛ, aₛ) = SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ)
     generalize (γₛD, aₛD) = zD
     change ConₛD (Γₛ ▹ Aₛ) (γₛ, aₛ) at zD
+
     -- have : (γₛ, aₛ) = SubₛA (Subₛ.id (Γₛ ▹ Aₛ)) (γₛ, aₛ) := sorry
     -- have := promote_ConₛA_ConₛD (z := z)
     -- have
