@@ -20,31 +20,119 @@ open Tyₛ Tyₚ Varₛ Varₚ
   ## Lowering Sorts
 -/
 
--- abbrev LTyₛA (Aₛ : Tyₛ.{u})                          : Type (u+2) := (aₛE : ETyₛA.{u,u+1} Aₛ) × GTyₛA.{u,u} Aₛ aₛE
--- abbrev LConₛA (Γₛ : Conₛ)                            : Type (u+2) := (γₛE : EConₛA.{u,u+1} Γₛ) × GConₛA.{u+1, u} Γₛ γₛE
--- abbrev LTmₛ (Γₛ : Conₛ) (Aₛ : Tyₛ) (γₛE : EConₛA Γₛ) : Type (u+2) := (tE  : ETmₛ Γₛ)   × GTmₛ Γₛ Aₛ γₛE tE
--- abbrev LTmₛA {Γₛ : Conₛ} (T : Tmₛ.{u} Γₛ U) (γₛL : LConₛA Γₛ) : Type (u+1) := -- make this `... -> Type (max (u+1) v)` some day.
---   (e : ETmₛA T γₛL.fst) × GTmₛA T γₛL.fst γₛL.snd e
-
 def mkLTyₛ' : (Aₛ : Tyₛ) -> (aₛE : ETyₛA.{u} Aₛ) -> GTyₛA.{u, u+2} Aₛ aₛE -> TyₛA.{u, u+2} Aₛ
 | U       , E, G => (e : E) × G e
 | SPi X Aₛ, E, G => fun (x : X) => mkLTyₛ' (Aₛ x) E (G (.up x))
 
-/-- Exactly same signature as `mkTyₛ` (other than two more universes), except produces pair of E and G. -/
+/-- Exactly same signature as `mkTyₛ` (other than two more universes), except produces pair of E and G.
+
+  `mkTyₛ` returns something like `fun (n:Nat) => fun y => Tmₚ _ _`.
+  And we want `mkLTyₛ` to instead return `fun (n:Nat) => fun y => Tmₚ _ _ × Tmₚ _ _`,
+  so the same lambda telescope, but the type it returns is a Σ.
+-/
 def mkLTyₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {Aₛ : Tyₛ} (t : Tmₛ Ωₛ Aₛ) : TyₛA.{u, u+2} Aₛ
   := mkLTyₛ' Aₛ (mkETyₛ.{u} Ωₛ Ωₚ t) (mkGTyₛ.{u,u} Ωₛ Ωₚ t)
 
-#check mkConₛ
--- def mkLConₛ := hard to define...
-def mkLConₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : ConₛA Ωₛ :=
-  sorry
+def mkLConₛ' (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {Γₛ} : Subₛ.{u} Ωₛ Γₛ -> ConₛA.{u, _} Γₛ
+| .nil => ⟨⟩
+| .cons σ t => ⟨mkLConₛ' Ωₛ Ωₚ σ, mkLTyₛ Ωₛ Ωₚ t⟩
 
+def mkLConₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : ConₛA Ωₛ := mkLConₛ' Ωₛ Ωₚ (Subₛ.id Ωₛ)
 
-/-
-  ## Lowering Points
--/
+#reduce mkLConₛ (Vₛ) (Vₚ String)
 
--- def mkLTyₚ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {A : Tyₚ Ωₛ} (t : Tmₚ Ωₚ A) : TyₚA A (mkLConₛ ...) := ...
+theorem mkLConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) ->
+  TmₛA.{u} t (@mkLConₛ'.{u} Ωₛ Ωₚ Γₛ σ) = @mkLTyₛ.{u} Ωₛ Ωₚ Aₛ (SubₛTm t σ)
+  := sorry
+
+/- ## Lowering Points -/
+set_option pp.proofs true
+-- set_option pp.explicit true
+
+def mkLTyₚ' (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ Ωₛ) :
+  {A : Tyₚ Ωₛ} ->
+  (tE : ETmₚ Ωₚ A) ->
+  (tG : GTmₚ Ωₚ A (mkEConₛ Ωₛ Ωₚ) (mkEConₚ Ωₛ Ωₚ) tE) ->
+  TyₚA A (mkLConₛ Ωₛ Ωₚ)
+| El Self        , tE, tG => by
+  rw [TyₚA, mkLConₛ, mkLConₛ_coherent, mkLTyₛ, mkLTyₛ', SubₛTm_id, mkGTyₛ]
+  simp only [mkGTyₛ, mkTyₛ]
+  rw [GTmₚ, gTyₚ] at tG
+  have h {A B : TyₛA U} (tm_f : Tmₛ (gConₛ Ωₛ (mkEConₛ Ωₛ Ωₚ)) (gTyₛ U A))
+    (a : A) (b : B) (eq : A = B) (eqq : a = Eq.rec b eq.symm)
+    : Tmₛ.app tm_f a = Tmₛ.app (eq ▸ tm_f) b := by cases eq; congr
+  have h' := h (gTmₛ (mkEConₛ Ωₛ Ωₚ) Self) (TmₚA tE (mkEConₚ Ωₛ Ωₚ)) tE mkEConₛ_coherent
+    (by rw [mkEConₚ, mkConₚ, mkConₚ_coherent, mkTyₚ, SubₚTm_id]; simp only [Eq.mpr, eq_cast_trans])
+  rw [h'] at tG
+  exact ⟨tE, tG⟩
+| PPi X Rest     , tE, tG => fun τ => mkLTyₚ' _ _ (.app tE τ) (.app tG (.up τ))
+| PFunc Self Rest, tE, tG => fun self => by
+  rw [mkLConₛ, mkLConₛ_coherent, SubₛTm_id, mkLTyₛ, mkLTyₛ'] at self
+  let ⟨selfE, selfG⟩ := self
+
+  have h {A B : TyₛA U} (tm_f : Tmₛ (gConₛ Ωₛ (mkEConₛ Ωₛ Ωₚ)) (gTyₛ U A))
+    (a : A) (b : B) (eq : A = B) (eqq : a = Eq.rec b eq.symm)
+    : Tmₛ.app tm_f a = Tmₛ.app (eq ▸ tm_f) b
+    := by cases eq; congr
+  have h' := h (gTmₛ (mkEConₛ Ωₛ Ωₚ) Self) (Eq.rec selfE mkEConₛ_coherent.symm) selfE mkEConₛ_coherent rfl
+
+  let tGe
+    : Tmₚ (gConₚ (mkEConₛ Ωₛ Ωₚ) Ωₚ (mkEConₚ Ωₛ Ωₚ))
+      (PFunc
+        (Tmₛ.app (gTmₛ (mkEConₛ Ωₛ Ωₚ) Self) (Eq.rec selfE mkEConₛ_coherent.symm)) -- : Tmₛ (gConₛ Ωₛ (mkEConₛ Ωₛ Ωₚ)) U
+        (gTyₚ (mkEConₛ Ωₛ Ωₚ) Rest (TmₚA tE (mkEConₚ Ωₛ Ωₚ) (Eq.rec selfE mkEConₛ_coherent.symm)))
+      )
+    := Tmₚ.app tG (Eq.rec selfE mkEConₛ_coherent.symm)
+  let tGeg := Tmₚ.appr tGe (h' ▸ selfG)
+
+  let exp : Tmₚ
+    (gConₚ (mkEConₛ Ωₛ Ωₚ) Ωₚ (mkEConₚ Ωₛ Ωₚ))
+    (gTyₚ (mkEConₛ Ωₛ Ωₚ) Rest (TmₚA (Tmₚ.appr tE selfE) (mkEConₚ Ωₛ Ωₚ)))
+    := by
+      rw [TmₚA]
+      rw [mkEConₚ_coherent_bad]
+      rw [mkEConₚ_coherent_bad] at tGeg
+      -- conv => arg 2; arg 3; arg 3
+      have : (mkETyₚ_bad Ωₛ Ωₚ tE (Eq.rec selfE mkEConₛ_coherent.symm)) = (mkETyₚ_bad Ωₛ Ωₚ tE (TmₚA selfE (mkEConₚ Ωₛ Ωₚ)))
+        := by
+          rw [mkEConₚ, mkConₚ]
+          rw [mkConₚ_coherent]
+          rw [mkTyₚ]
+          simp only [Eq.mpr, SubₚTm_id, eq_cast_trans]
+      rw [<- this]
+      exact tGeg
+  exact mkLTyₚ' _ _ (.appr tE selfE) exp
+
+/-- Define a constructor for the lowered type. -/
+def mkLTyₚ (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ Ωₛ) {A : Tyₚ Ωₛ} (t : Tmₚ Ωₚ A) : TyₚA A (mkLConₛ Ωₛ Ωₚ)
+  := mkLTyₚ' Ωₛ Ωₚ (eTmₚ t) (gTmₚ (mkEConₛ Ωₛ Ωₚ) (mkEConₚ Ωₛ Ωₚ) t)
+
+#print axioms mkLTyₚ
+
+def _VecL := mkTyₛ.{0} Vₛ (Vₚ String) (.var .vz)
+def _VecL.nil := mkLTyₚ.{0} Vₛ (Vₚ String) (.var (.vs .vz))
+def _VecL.cons := mkLTyₚ.{0} Vₛ (Vₚ String) (.var .vz)
+#reduce _VecL.nil
+#reduce _VecL
+-- set_option maxHeartbeats 20000000 -- even 20000000 is not enough lmao
+-- #reduce _VecL.cons
+
+#check Nₛ
+#check N
+#reduce mkLTyₚ.{0} Nₛ N (.var (.vs .vz))
+#reduce mkLTyₚ.{0} Nₛ (Conₚ.ext Conₚ.nil (PPi Nat (fun _ => El (.var .vz)))) (.var .vz)
+-- #reduce mkLTyₚ.{0} Nₛ N (.var .vz)
+
+#reduce TyₚA V_cons (mkLConₛ Vₛ (Vₚ String))
+
+example :
+    _VecL.cons =
+    fun (n : Nat) (x : String) (v : TmₛA (Tmₛ.app (Tmₛ.var Varₛ.vz) n) (mkLConₛ Vₛ (Vₚ String))) =>
+      ⟨
+        Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) (ULift.up n)) x) v.fst,
+        Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) n) x) v.fst) v.snd
+      ⟩
+  := sorry
 
 namespace Example
   universe u v
@@ -78,6 +166,8 @@ namespace Example
   def VecG      := mkGTyₛ.{u, u} Vₛ (Vₚ (ULift String)) (.var .vz)
   def VecG.nil  := mkGTyₚ Vₛ (Vₚ (ULift String)) (.var (.vs .vz))
   def VecG.cons := mkGTyₚ Vₛ (Vₚ (ULift String)) (.var .vz)
+
+  #reduce VecE.cons
 
   -- L
   def VecL' : TyₛA (SPi (ULift Nat) fun _ => U) := mkLTyₛ Vₛ (Vₚ (ULift String)) (.var .vz)

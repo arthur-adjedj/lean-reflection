@@ -62,18 +62,33 @@ abbrev EConₚA (Γ : Conₚ Γₛ) (γₛE : EConₛA Γₛ) : Type _ := Conₚ
 abbrev EVarₚ (Γ : Conₚ Γₛ) (A : Tyₚ Γₛ) : Type _ := Varₚ (eConₚ Γ) (eTyₚ A)
 abbrev ETmₚ (Γ : Conₚ Γₛ) (A : Tyₚ Γₛ) : Type _ := Tmₚ (eConₚ Γ) (eTyₚ A)
 abbrev mkETyₚ.{u} (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {Aₚ : Tyₚ Ωₛ} (t : Tmₚ Ωₚ Aₚ) : ETyₚA Aₚ (mkEConₛ Ωₛ Ωₚ) := mkTyₚ.{u, u} (eConₛ Ωₛ) (eConₚ Ωₚ) (eTmₚ t)
+abbrev mkETyₚ_bad.{u} (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) {Aₚ : Tyₚ Ωₛ} (t : ETmₚ Ωₚ Aₚ) : ETyₚA Aₚ (mkEConₛ Ωₛ Ωₚ)
+  := mkTyₚ.{u, u} (eConₛ Ωₛ) (eConₚ Ωₚ) t
 abbrev mkEConₚ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : EConₚA.{u, u+1} Ωₚ (mkEConₛ Ωₛ Ωₚ) := mkConₚ.{u, u} (eConₛ Ωₛ) (eConₚ Ωₚ)
 
 theorem mkEConₛ_coherent {t : Tmₛ Ωₛ Aₛ} : TmₛA (eTmₛ t) (mkEConₛ Ωₛ Ωₚ) = mkETyₛ Ωₛ Ωₚ t := by
   rw [mkEConₛ, mkETyₛ, mkConₛ]
   rw [mkConₛ_coherent]
-  induction t with
-  | var v =>
-    simp [eTmₛ, TmₛA_var, mkTyₛ]
-    induction v with
-    | vz => rfl
-    | vs v =>
-      simp only [eVarₛ, VarₛA]
-      rw [SubₛTm]
-      rw [SubₛVar_id]
-  | app t u ih => rw [eTmₛ, ih]
+  rw [SubₛTm_id]
+  -- induction t with
+  -- | var v =>
+  --   simp [eTmₛ, TmₛA_var, mkTyₛ]
+  --   induction v with
+  --   | vz => rfl
+  --   | vs v =>
+  --     simp only [eVarₛ, VarₛA]
+  --     rw [SubₛTm]
+  --     rw [SubₛVar_id]
+  -- | app t u ih => rw [eTmₛ, ih]
+
+theorem mkEConₚ_coherent {Ωₛ : Conₛ} {Ωₚ : Conₚ Ωₛ} {Aₚ : Tyₚ Ωₛ} {t : Tmₚ Ωₚ Aₚ}
+  : TmₚA (eTmₚ t) (mkEConₚ Ωₛ Ωₚ) = mkETyₚ Ωₛ Ωₚ t
+:= by rw [mkETyₚ, mkEConₚ, mkConₚ, mkConₚ_coherent, SubₚTm_id]
+
+#check mkConₚ_coherent
+
+#check @ETmₚ
+theorem mkEConₚ_coherent_bad {Ωₛ : Conₛ} {Ωₚ : Conₚ Ωₛ} {Aₚ : Tyₚ Ωₛ} {t : ETmₚ Ωₚ Aₚ}
+  -- @TmₚA (eConₛ Ωₛ) (eConₚ Ωₚ) (mkEConₛ Ωₛ Ωₚ) (eTyₚ Aₚ) t (mkEConₚ Ωₛ Ωₚ)
+  : TmₚA t (mkEConₚ Ωₛ Ωₚ) = mkETyₚ_bad Ωₛ Ωₚ t
+:= by rw [mkETyₚ_bad, mkEConₚ, mkConₚ, mkConₚ_coherent, SubₚTm_id]

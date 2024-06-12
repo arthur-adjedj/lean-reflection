@@ -1,1 +1,1 @@
-import Reflection.MutualInductive
+import Reflection.MInd

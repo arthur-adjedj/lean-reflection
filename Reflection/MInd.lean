@@ -815,63 +815,12 @@ theorem SubₛVar_id : (v : Varₛ Γₛ Aₛ) -> SubₛVar v (Subₛ.id Γₛ) 
   rw [ih]
   rfl
 
-theorem SubₛTm_id' : {Γₛ : Conₛ} -> (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
+theorem SubₛTm_id : {Γₛ : Conₛ} -> (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
 | .nil, t => False.elim <| Tmₛ_emptyCtx t
-| .ext Γₛ Bₛ, .var v => by
-  simp [SubₛVar_id, SubₛTm]
-  -- rw [SubₛTm, Subₛ.id]
-  -- match v with
-  -- | vz => rw [SubₛVar]
-  -- | vs v =>
-  --   have ih := SubₛTm_id' (.var v)
-  --   rw [SubₛTm] at ih
-  --   rw [SubₛVar]
-  --   have := congr_arg (vshift (Bₛ := Bₛ)) ih
-  --   rw [vshift] at this
-  --   -- rw [<- foo] -- !
-  --   -- exact this
-  --   done
-| .ext Γₛ Bₛ, .app (A:=Cₛ) t u => by rw [SubₛTm, SubₛTm_id' t]
+| .ext Γₛ Bₛ, .var v => by simp only [SubₛVar_id, SubₛTm]
+| .ext Γₛ Bₛ, .app (A:=Cₛ) t u => by rw [SubₛTm, SubₛTm_id t]
 
 
-theorem SubₛTm_id : (t : Tmₛ Γₛ Aₛ) -> SubₛTm t (Subₛ.id Γₛ) = t
-| .var v => by
-  match v with
-  | .vz => rw [SubₛTm, Subₛ.id, SubₛVar]
-  | .vs (Γₛ := Δₛ) v =>
-    have ih := SubₛTm_id (.var v)
-    rw [SubₛTm] at ih
-    rw [SubₛTm, Subₛ.id, SubₛVar]
-    match Δₛ with
-    | .nil =>
-      rw [Subₛ.id]
-      -- have := congr_arg (vshift (Bₛ := Aₛ)) ih
-      -- sorry
-      -- rw [vshift] at this
-      -- rw [Subₛ.id] at ih
-      -- done
-      sorry
-    | .ext Δₛ Bₛ => sorry
-| .app (A := _Bₛ) t u => by rw [SubₛTm, SubₛTm_id t]
-
-  -- induction t with
-  -- | var v =>
-  --   rw [SubₛTm]
-  --   induction Γₛ with
-  --   | nil => exact False.elim <| Tmₛ_emptyCtx (.var v)
-  --   | ext Γₛ Bₛ ih =>
-  --     rw [Subₛ.id]
-  --     sorry
-  --   done
-  -- | app t u ih => sorry
-
-  -- induction Γₛ  with
-  -- | nil => exact False.elim <| Tmₛ_emptyCtx t
-  -- | ext Γₛ Bₛ ih =>
-  --   rw [Subₛ.id]
-  --   sorry
-
--- #exit
 
 -- ## Now for Points...
 
@@ -924,7 +873,8 @@ theorem Tmₚ_emptyCtx (t : Tmₚ ⬝ A) : False := by
   | appr _ _ ih => exact ih
 
 
--- theorem SubₚTm_id (t : Tmₚ Γ A) : SubₚTm t (Subₚ.id Γ) = t := by
+theorem SubₚTm_id (t : Tmₚ Γ A) : SubₚTm t (Subₚ.id Γ) = t := by
+  sorry
 --   -- induction Γ with
 --   -- | nil => exfalso; exact Tmₚ_emptyCtx t
 --   -- | ext Γ B ih =>
@@ -1065,11 +1015,12 @@ example
 def mkTyₚ : {A : Tyₚ _} -> Tmₚ Ωₚ A -> TyₚA A (mkConₛ Ωₛ Ωₚ)
 | El Self, t => by
   -- this is actually `⊢ Tmₚ Ω (El Self)` but lean isn't smart enough
-  rw [TyₚA]
-  rw [mkConₛ]
-  rw [mkConₛ_coherent _ _ Self]
-  rw [mkTyₛ]
-  rw [SubₛTm_id]
+  --                               ⊢ TyₚA (El Self) (mkConₛ Ωₛ Ωₚ)
+  rw [TyₚA]                     -- ⊢ TmₛA Self (mkConₛ Ωₛ Ωₚ)
+  rw [mkConₛ]                   -- ⊢ TmₛA Self (mkConₛ' Ωₛ Ωₚ (Subₛ.id Ωₛ))
+  rw [mkConₛ_coherent _ _ Self] -- ⊢ mkTyₛ Ωₛ Ωₚ (SubₛTm Self (Subₛ.id Ωₛ))
+  rw [mkTyₛ]                    -- ⊢ Tmₚ Ωₚ (El (SubₛTm Self (Subₛ.id Ωₛ)))
+  rw [SubₛTm_id]                -- ⊢ Tmₚ Ωₚ (El Self)
   exact t
 | PPi T A, t => fun τ => mkTyₚ (.app t τ)
 | PFunc Self A, t =>
@@ -1111,8 +1062,8 @@ theorem mkConₚ_coherent : (t : Tmₚ Γ A) -> (σ : Subₚ Ωₚ Γ) -> TmₚA
   conv in mkTyₚ _ => unfold mkTyₚ
   rw [mkTyₚ]
   simp [Eq.mp, Eq.mpr, eq_cast_trans]
-  sorry -- this broke when making Ωₛ and Ωₚ explicit somehow
-  done
+  congr
+  simp [Eq.mp, Eq.mpr, eq_cast_trans]
 
 #print axioms mkConₚ_coherent
 
