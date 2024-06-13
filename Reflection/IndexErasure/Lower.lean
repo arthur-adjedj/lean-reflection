@@ -4,9 +4,11 @@ import Reflection.IndexErasure.Guard
 
 namespace Reflection.IndexErasure
 
-set_option pp.fieldNotation.generalized false
 open Reflection MInd
 open Tyₛ Tyₚ Varₛ Varₚ
+
+set_option pp.proofs true
+set_option pp.fieldNotation.generalized false
 
 /-
   # Lowering
@@ -41,13 +43,26 @@ def mkLConₛ (Ωₛ : Conₛ) (Ωₚ : Conₚ Ωₛ) : ConₛA Ωₛ := mkLCon�
 
 #reduce mkLConₛ (Vₛ) (Vₚ String)
 
-theorem mkLConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) ->
-  TmₛA.{u} t (@mkLConₛ'.{u} Ωₛ Ωₚ Γₛ σ) = @mkLTyₛ.{u} Ωₛ Ωₚ Aₛ (SubₛTm t σ)
-  := sorry
+theorem mkLConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ) -> TmₛA.{u} t (@mkLConₛ'.{u} Ωₛ Ωₚ Γₛ σ) = @mkLTyₛ.{u} Ωₛ Ωₚ Aₛ (SubₛTm t σ)
+| t                 , .nil      => False.elim (Tmₛ_emptyCtx t)
+| .var .vz          , .cons σ s => rfl
+| .var (.vs v)      , .cons σ s => by
+  -- have ih : TmₛA (Tmₛ.var v) (mkConₛ' Ωₛ Ωₚ σ) = mkTyₛ Ωₛ Ωₚ (SubₛTm (Tmₛ.var v) σ)
+  --   := mkLConₛ_coherent (.var v) σ
+  rw [TmₛA_var]
+  simp_all only [TmₛA_var, SubₛTm, VarₛA, SubₛVar]
+  sorry
+  done
+| .app (A := Cₛ) f τ, σ => by
+  rw [TmₛA_app, mkLConₛ_coherent f σ, SubₛTm]
+  simp [mkLTyₛ, mkLTyₛ', mkGTyₛ, gTmₛ]
+  congr
+  -- easy :3
+  sorry
+  done
+
 
 /- ## Lowering Points -/
-set_option pp.proofs true
--- set_option pp.explicit true
 
 def mkLTyₚ' (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ Ωₛ) :
   {A : Tyₚ Ωₛ} ->
