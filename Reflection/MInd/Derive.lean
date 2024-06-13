@@ -19,12 +19,6 @@ def resolve (T : TSyntax `term) : TermElabM InductiveVal := do
   let .const name _ := T.getAppFn | throwError "expected a simple const"
   getConstInfoInduct name
 
-def _root_.List.indexOf [BEq α] : List α -> α -> Option Nat
-| []     , _ => none
-| x :: xs, a => if x == a then some 0 else (indexOf xs a).map (. + 1)
-
-
-
 /-- Reads in `Nat -> Type`. -/
 partial def getTyₛ (τ : Q(Type (u+1))) : MetaM Q(Tyₛ.{u}) := do
   forallBoundedTelescope τ (some 1) fun var body => do
@@ -105,7 +99,7 @@ partial def getTmₛ (mblock : List Name) (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Ty�
   let T : Q(TyₛA.{u, u} $Aₛ) <- whnf T
   match T with
   | .const name _ =>
-    let some idx := mblock.indexOf name | throwError "getTmₛ case Tyₛ.U: {T} does not belong to mutual block {mblock}"
+    let some idx := mblock.indexOf? name | throwError "getTmₛ case Tyₛ.U: {T} does not belong to mutual block {mblock}"
     let var <- getVarₛ idx Γₛ Aₛ
     return q(Tmₛ.var $var)
   | .app f x => -- case `Vec 123 : TyₛA Aₛ`
