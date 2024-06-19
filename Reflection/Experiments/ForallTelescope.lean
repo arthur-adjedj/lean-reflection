@@ -1,11 +1,18 @@
 import Reflection.Util.Vec
+import Aesop
 
-def ForallTelescope (doms : Vec (Sort u) k) (body : ((idx : Fin k) -> Vec.get doms idx) -> Type (max u v)) : Type (max u v) :=
+set_option pp.proofs true
+set_option pp.fieldNotation.generalized false
+-- set_option pp.universes true
+
+def ForallTelescope (doms : Vec (Type u) k) (body : ((idx : Fin k) -> Vec.get doms idx) -> Type (max u v)) : Type (max u v) :=
   match doms with
   | .nil => body fun ⟨_, h⟩ => absurd h (Nat.not_lt_zero _)
   | .cons A doms' => (x : A) -> ForallTelescope doms' fun f => body fun
     | ⟨0, _h⟩ => x
     | ⟨.succ i, _h⟩ => f ⟨i, _⟩
+
+#check ForallTelescope.{0,0}
 
 def ForallTelescopeP (doms : Vec (Sort u) k) (body : ((idx : Fin k) -> Vec.get doms idx) -> Prop) : Prop :=
   match doms with

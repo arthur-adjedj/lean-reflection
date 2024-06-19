@@ -9,8 +9,8 @@ namespace Reflection.MInd
 -/
 
 set_option pp.proofs true
-set_option pp.fieldNotation false
-
+set_option pp.fieldNotation.generalized false
+-- set_option pp.universes true
 
 -- # Syntax
 
@@ -19,11 +19,6 @@ inductive Tyₛ : Type (u + 1)
 | U : Tyₛ
 | SPi : (T : Type u) -> (T -> Tyₛ) -> Tyₛ
 open Tyₛ
-
--- cursed approach to avoid u+1 (credits to Jakob)
--- inductive Tyₛ' (Ts : List (Type u)) : Type u
--- | U : Tyₛ' Ts
--- | SPi : (i : Fin (Ts.length)) -> (T[i] -> Tyₛ' Ts) -> Tyₛ' Ts
 
 inductive Conₛ
 | nil : Conₛ
@@ -42,6 +37,7 @@ open Varₛ
 set_option genInjectivity false in
 /-- `t : Tmₛ Γ A` corresponds to `Γ ⊢ t : A`.
 Original Agda: https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IF.agda#lines-25:27 -/
+-- {Ts : Tyₛ.{u}}
 inductive Tmₛ.{u} : Conₛ.{u} -> Tyₛ.{u} -> Type (u+1)
 /-- A variable is a term.
 ```-
@@ -56,7 +52,8 @@ inductive Tmₛ.{u} : Conₛ.{u} -> Tyₛ.{u} -> Type (u+1)
 -------------------------------------app-Intro
 Γ ⊢ₛ f arg : A arg
 ``` -/
-| app : Tmₛ Γ (SPi T A) -> (arg : T) -> Tmₛ Γ (A arg)
+| app {Γ : Conₛ} {T : Type u} {A : T → Tyₛ} : Tmₛ Γ (SPi T A) -> (arg : T) -> Tmₛ Γ (A arg)
+
 
 -- -- ! This fails:
 -- gen_injective_theorems% Tmₛ
@@ -76,10 +73,10 @@ The only way to create a `Tyₚ` is by ending it with a `El`, which must be a te
 The only way to create a term like that is by using `Tmₛ.app` and `Tmₛ.var`.
 For example the variables are `Even` and `Odd`, i.e. the other types in the mutual block being defined,
 then `Even @ 123` is a term in universe `U`. -/
-inductive Tyₚ : Conₛ -> Type (u+1)
+inductive Tyₚ : Conₛ.{u} -> Type (u+1)
 | El : Tmₛ Γₛ U -> Tyₚ Γₛ
 | PPi   : (T : Type u) -> (T -> Tyₚ Γₛ) -> Tyₚ Γₛ
-| PFunc : Tmₛ Γₛ U   ->       Tyₚ Γₛ  -> Tyₚ Γₛ
+| PFunc : Tmₛ Γₛ U     ->       Tyₚ Γₛ  -> Tyₚ Γₛ
 -- | PInf -- https://arxiv.org/pdf/2006.11736.pdf search for "infinitary" (page 5).
 open Tyₚ
 
@@ -127,7 +124,7 @@ end Examples
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`.
   The second `v` universe parameter is not strictly necessary, but it is later used to the same effect as `ULift`. -/
 @[aesop safe]
-def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
+def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) +1)
 | U => Type (max u v)
 | SPi T A => (t : T) -> TyₛA (A t)
 
@@ -136,6 +133,9 @@ def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
 def ConₛA.{u, v} : Conₛ.{u} -> Type ((max u v) + 1)
 | .nil => PUnit.{(max u v) + 2}
 | .ext Γ A => Prod.{(max u v) + 1} (ConₛA Γ) (TyₛA.{u, v} A)
+
+#check TyₛA.{0,0} (SPi Nat fun _ => U)
+#reduce TyₛA.{0,0} (SPi Nat fun _ => U)
 
 example : ConₛA Vₛ = (PUnit.{2} × (Nat -> Type)) := Eq.refl _
 
@@ -984,7 +984,7 @@ def mkTyₛ (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ.{u} Ωₛ) : {Aₛ : Tyₛ.{u}}
 example : Type 1        := mkTyₛ.{0, 0} Vₛ (Vₚ String) (.app (.var .vz) 123) -- `Vec 123 : Type 1`
 example : TyₛA.{0, 1} U := mkTyₛ Vₛ (Vₚ String) (.app (.var .vz) 123)
 example : TyₛA (SPi Nat (fun _ => U)) := mkTyₛ Vₛ (Vₚ String) (.var .vz)
-#reduce TyₛA (SPi Nat (fun _ => U))
+#reduce TyₛA.{0,0} (SPi Nat (fun _ => U))
 
 /-- When you write `Vec : Nat -> Type` in Lean, that is a primitive constructor with no actual definition.
   Instead, here we *actually* provide a definition of that type, concretely
