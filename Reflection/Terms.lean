@@ -2,8 +2,6 @@ import Aesop
 set_option linter.unusedVariables false
 set_option pp.fieldNotation.generalized false
 
-open Aesop
-
 /- # The original IIRT
 mutual
   inductive Con : Type
@@ -46,12 +44,6 @@ mutual
 end
 -/
 
--- /-- A mutual inductive type. -/
--- structure MInd /- (Γ : Tele) -/ (A : Tyₛ /- Γ -/) where
---   Ωₛ : Conₛ /- Γ -/
---   Ωₚ : Conₚ Ωₛ /- Γ -/
---   T : Tmₛ Ωₛ A
-
 mutual
   @[aesop unsafe constructors cases]
   inductive ECon : Type
@@ -60,56 +52,72 @@ mutual
 
   @[aesop unsafe constructors cases]
   inductive ETy : Type
-  | U : ETy
-  | El : ETm -> ETy
-  | Pi : ETy -> ETy -> ETy
+  | U : ECon -> ETy
+  | El : ECon -> ETm -> ETy
+  /-- | Pi {Γ} : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ -/
+  | Pi : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> ETy
 
   @[aesop unsafe constructors cases]
   inductive EVar : Type
-  | vz : EVar
-  | vs : EVar -> EVar
+  | vz : (Γ : ECon) -> (A : ETy) -> EVar
+  /-- `vs {Γ} : Var Γ A -> Var (Γ, B) A` -/
+  | vs : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> EVar -> EVar
 
   @[aesop unsafe constructors cases]
   inductive ETm : Type
-  | var : EVar -> ETm
-  | app : (f : ETm) -> (a : ETm) -> ETm
-  | lam : (body : ETm) -> ETm
+  /-- `var : Var Γ A -> Tm Γ A` -/
+  | var : (Γ : ECon) -> (A : ETy) -> EVar -> ETm
+  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]` -/
+  | app : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (f : ETm) -> (a : ETm) -> ETm
+  /-- `lam {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (body : Tm (ext Γ A) B) -> Tm Γ (Pi A B)` -/
+  | lam : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (body : ETm) -> ETm
   /-- necessary because of substVarE. Will be proven impossible in the final IIRT. -/
   | error : ETm
 
   @[aesop unsafe constructors cases]
   inductive ESubst : Type
-  | nil : ESubst
-  | cons : ESubst -> ETm -> ESubst
+  | nil : (Γ : ECon) -> ESubst
+  | cons : (Γ : ECon) -> (Δ : ECon) -> (A : ETy) -> ESubst -> ETm -> ESubst
 end
 
-@[aesop unsafe]
-def substVarE : EVar -> ESubst -> ETm
-| .vz, .cons _ t => t
-| .vs v, .cons σ _ => substVarE v σ
-| _, _ => .error
+mutual
+  @[aesop unsafe]
+  def substVarE : EVar -> ESubst -> ETm
+  | .vz _ _, .cons _ _ _ _ t => t
+  | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
+  | _, _ => .error
 
-@[aesop unsafe]
-def substTmE : ETm -> ESubst -> ETm
-| .var v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
-| .app f a, σ => .app (substTmE f σ) (substTmE a σ)
-| .lam body, σ => .lam (substTmE body σ)
-| .error, _ => .error
+  @[aesop unsafe]
+  def substConE : ECon -> ESubst -> ECon
+  | .nil    , σ => .nil
+  | .ext Γ A, σ => .ext (substConE Γ σ) (substTyE A σ)
 
-@[aesop unsafe]
-def substTyE : ETy -> ESubst -> ETy
-| .U, σ => .U
-| .El t, σ => .El (substTmE t σ)
-| .Pi A B, σ => .Pi (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
+  @[aesop unsafe]
+  def substTmE : ETm -> ESubst -> ETm
+  | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
+  | .app Γ A B f a, σ => .app (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE f σ) (substTmE a σ)
+  | .lam Γ A B body, σ => .lam (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE body σ)
+  | .error, _ => .error
+
+  @[aesop unsafe]
+  def substTyE : ETy -> ESubst -> ETy
+  | .U Γ, σ => .U (substConE Γ σ)
+  | .El Γ t, σ => .El (substConE Γ σ) (substTmE t σ)
+  | .Pi Γ A B, σ => .Pi (substConE Γ σ) (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
+end
 
 
-/-- `Tm Γ A -> Tm (Γ, B) A` -/
-@[aesop unsafe]
-def ESubst.vshift : ETm -> ETm
-| .var v => .var (.vs v)
-| .app f a => .app (vshift f) (vshift a)
-| .lam body => .lam (vshift body)
-| .error => .error
+mutual
+  /-- `Tm Γ A -> Tm (Γ, B) A` -/
+  @[aesop unsafe]
+  def vshiftTmE : ETm -> ETm
+  | .var Γ A v => .var (.vs v)
+  | .app A B f a => .app (vshift f) (vshift a)
+  | .lam body => .lam (vshift body)
+  | .error => .error
+
+  -- def vshiftTmE : ETm -> ETm
+end
 
 /-- `Subst Γ Δ -> Subst (Γ, A) Δ` -/
 @[aesop unsafe]
@@ -289,7 +297,7 @@ mutual
     -- `f        : Tm Γ (Pi A B)`
     -- `a        : Tm Γ A`
     -- `.app f a : Tm Γ B[Var.vz ↦ a]`
-    have : B_subst_a = B
+    -- have : B_subst_a = B
     -- let BM := sorry
     -- let ih_f : TmM ΓM (PiM ΓM AM BM) ⟨f, _⟩ := Tm.rec' f sorry
     let ih_a : TmM ΓM AM ⟨ae, _⟩ := Tm.rec' ae sorry
