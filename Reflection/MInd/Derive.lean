@@ -1,3 +1,4 @@
+import Reflection.MInd.Trace
 import Lean
 import Reflection.MInd
 import Qq
@@ -9,6 +10,7 @@ set_option pp.fieldNotation.generalized false
 
 namespace Reflection.MInd.Derive
 
+
 inductive Vec : Nat -> Type
 | nil : Vec 0
 | cons : (n : Nat) -> String -> Vec n -> Vec (n + 1)
@@ -19,32 +21,44 @@ def resolve (T : TSyntax `term) : TermElabM InductiveVal := do
   let .const name _ := T.getAppFn | throwError "expected a simple const"
   getConstInfoInduct name
 
+def log (f_ok : α -> MetaM MessageData) (f_err : Exception -> MetaM MessageData := fun e => throw e) : Except Exception α → MetaM MessageData
+| .ok val => f_ok val
+| .error e => f_err e
+def log' (f_ok : α -> MessageData) : Except Exception α → MetaM MessageData := log (fun a => return f_ok a) (fun e => return m!"_ ==> ERROR {e.toMessageData}")
+def niceLog [ToMessageData α] (wher : MessageData) : Except Exception α → MetaM MessageData := log
+  (fun res => return m!"{wher} ==> {res}")
+  (fun err => return m!"{wher} ==> ERROR {err.toMessageData}")
+
 /-- Reads in `Nat -> Type`. -/
 partial def getTyₛ (τ : Q(Type (u+1))) : MetaM Q(Tyₛ.{u}) := do
-  forallBoundedTelescope τ (some 1) fun var body => do
-    if var.isEmpty then
-      -- unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
-      unless <- isDefEq body q(Type u) do throwError "getTyₛ isDefEq failed between {body} and {q(Type u)}"
-      return <- instantiateMVars q(Tyₛ.U.{u})
-    else
-      let var := var[0]!
-      let ty : Q(Type u) <- var.fvarId!.getType -- for example `ty ≣ Nat`
-      unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
-      let rest : Q(Tyₛ.{u}) <- getTyₛ body -- rest is for example `var : X ⊢ SPi ...`
-      let rest : Q($ty -> Tyₛ.{u}) <- mkLambdaFVars #[var] rest
-      return <- instantiateMVars q(Tyₛ.SPi.{u} $ty $rest)
+  withTraceNode `MInd.Derive (niceLog m!"getTyₛ {τ}") do
+    forallBoundedTelescope τ (some 1) fun var body => do
+      if var.isEmpty then
+        -- unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
+        unless <- isDefEq body q(Type u) do throwError "getTyₛ isDefEq failed between {body} and {q(Type u)}"
+        return <- instantiateMVars q(Tyₛ.U.{u})
+      else
+        let var := var[0]!
+        let ty : Q(Type u) <- var.fvarId!.getType -- for example `ty ≣ Nat`
+        unless <- isDefEq (<- inferType ty) q(Type u) do throwError "getTyₛ isDefEq failed\n{(<- inferType ty)} =/= {q(Type u)}"
+        let rest : Q(Tyₛ.{u}) <- getTyₛ body -- rest is for example `var : X ⊢ SPi ...`
+        let rest : Q($ty -> Tyₛ.{u}) <- mkLambdaFVars #[var] rest
+        return <- instantiateMVars q(Tyₛ.SPi.{u} $ty $rest)
 
 partial def getConₛ (block : InductiveVal) : MetaM Q(Conₛ.{u}) := do
-  block.all.foldlM (fun (acc : Q(Conₛ.{u})) I => do
-    let info <- getConstInfoInduct I
-    let ty : Q(Tyₛ.{u}) <- getTyₛ info.type
-    return q(Conₛ.ext $acc $ty)
-  ) q(Conₛ.nil.{u})
+  withTraceNode `MInd.Derive (niceLog m!"getConₛ {block.all}") do
+    block.all.foldlM (fun (acc : Q(Conₛ.{u})) I => do
+      let info <- getConstInfoInduct I
+      let ty : Q(Tyₛ.{u}) <- getTyₛ info.type
+      return q(Conₛ.ext $acc $ty)
+    ) q(Conₛ.nil.{u})
 
 elab "getTyₛ! " T:term:max : term => do
   getTyₛ (u := <- mkFreshLevelMVar) (<- resolve T).type
 elab "getConₛ! " T:term:max : term => do
   getConₛ (u := <- mkFreshLevelMVar) (<- resolve T)
+
+-- set_option trace.MInd.Derive true
 
 def testConₛ := getConₛ! Vec
 #print testConₛ
@@ -81,14 +95,17 @@ def getVarₛ (n : Nat) (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Tyₛ.{u})) : MetaM Q(
   Conₛ.recMeta Γₛ
     (throwError "getVarₛ: Γₛ is nil")
     (fun Δₛ _ih Bₛ => do
-      match n with
-      | 0 =>
-        let .true <- isDefEq Bₛ Aₛ | throwError "getVarₛ n=0: isDefEq failed: {Aₛ} is not defeq to {Bₛ}"
-        return mkApp2 q(@Varₛ.vz.{u}) Δₛ Bₛ
-      | n + 1 =>
-        let var : Q(Varₛ $Δₛ $Aₛ) <- getVarₛ n Δₛ Aₛ
-        return .app q(@Varₛ.vs $Δₛ $Aₛ $Bₛ) var
+      withTraceNode `MInd.Derive (niceLog m!"geVarₛ {n} ({Aₛ})") do
+        match n with
+        | 0 =>
+          let .true <- isDefEq Bₛ Aₛ | throwError "getVarₛ n=0: isDefEq failed: {Aₛ} is not defeq to {Bₛ}"
+          return mkApp2 q(@Varₛ.vz.{u}) Δₛ Bₛ
+        | n + 1 =>
+          let var : Q(Varₛ $Δₛ $Aₛ) <- getVarₛ n Δₛ Aₛ
+          return .app q(@Varₛ.vs $Δₛ $Aₛ $Bₛ) var
     )
+
+set_option trace.MInd.Derive true
 
 def ctx : Q(Conₛ.{0}) := q((⬝ ▹ Tyₛ.U) ▹ Tyₛ.U)
 #eval getVarₛ (u := 0) 0 ctx q(Tyₛ.U)
@@ -97,27 +114,29 @@ def ctx : Q(Conₛ.{0}) := q((⬝ ▹ Tyₛ.U) ▹ Tyₛ.U)
 /-- Reads in `Vec 123`. Make sure that `mblock` has the names of `Γₛ` in the same order. -/
 partial def getTmₛ (mblock : List Name) (Γₛ : Q(Conₛ.{u})) (Aₛ : Q(Tyₛ.{u})) (T : Q(TyₛA.{u, u} $Aₛ)) : MetaM Q(Tmₛ.{u} $Γₛ $Aₛ) := do
   let T : Q(TyₛA.{u, u} $Aₛ) <- whnf T
-  match T with
-  | .const name _ =>
-    let some idx := mblock.indexOf? name | throwError "getTmₛ case Tyₛ.U: {T} does not belong to mutual block {mblock}"
-    let var <- getVarₛ idx Γₛ Aₛ
-    return q(Tmₛ.var $var)
-  | .app f x => -- case `Vec 123 : TyₛA Aₛ`
-    let ⟨u', ⟨X, x⟩⟩ <- inferTypeQ x -- x : X
-    unless <- isLevelDefEq (.succ u) u' do throwError "getTmₛ level defeq failed, u ≣ {u}, but u' ≣ {u'}, with X ≣ {X}"
-    let Bₛ : Q($X -> Tyₛ.{u}) <- mkFreshExprMVarQ q($X -> Tyₛ.{u})
-    let fTy <- inferType f -- q(Nat -> Type)
-    let fTy_code : Q(Tyₛ.{u}) <- getTyₛ (u := u) fTy -- q("Nat -> Type")
-    let fTy_code_A : Q(Type (u+1)) := q(TyₛA.{u,u} $fTy_code) -- q("Nat -> Type"ᴬ) ≣ fTy ≣ q(Nat -> "Type"ᴬ)
-    unless <- isDefEq fTy_code_A fTy do throwError "getTmₛ defeq failed, (TyₛA ∘ getTyₛ) doesn't roundtrip somehow\nfTy ≣ {fTy}\nfTy_code_A ≣ {fTy_code_A}"
-    unless <- isDefEq fTy_code_A q((x : $X) -> TyₛA.{u,u} ($Bₛ x)) do throwError "getTmₛ defeq failed \nfTy ≣ {fTy}\nexpected ≣ {q((x : $X) -> TyₛA.{u,u} ($Bₛ x))}"
-    unless <- isDefEq Aₛ q($Bₛ $x) do throwError "getTmₛ defeq failed\nAₛ ≣ {Aₛ}\nBₛ x ≣ {q($Bₛ $x)}"
-    let f : Q((x : $X) -> TyₛA.{u,u} ($Bₛ $x)) := f -- this is okay because of the defeq checks above
-    let fTm /-: Q(Tmₛ $Γₛ (Tyₛ.SPi $X $Bₛ))-/ <- getTmₛ mblock Γₛ (mkApp2 q(Tyₛ.SPi.{u}) X Bₛ) f
-    let ret := mkAppN q(@Tmₛ.app.{u}) #[Γₛ, X, Bₛ, fTm, x]
-    let ret <- instantiateMVars ret
-    return ret
-  | _ => throwError "oh no, getTmₛ {T}"
+  withTraceNode `MInd.Derive (niceLog m!"geTmₛ ({Aₛ}) ({T})") do
+    match T with
+    | .const name _ =>
+      let some idx := mblock.indexOf? name | throwError "getTmₛ case Tyₛ.U: {T} does not belong to mutual block {mblock}"
+      let var <- getVarₛ idx Γₛ Aₛ
+      return q(Tmₛ.var $var)
+    | .app f x => -- case `Vec 123 : TyₛA Aₛ`
+      let ⟨u', ⟨X, x⟩⟩ <- inferTypeQ x -- x : X
+      -- throwError "X ≡ {X}, x ≡ {x}, u ≡ {u}"
+      unless <- isLevelDefEq (.succ u) u' do throwError "getTmₛ level defeq failed, u ≣ {u}, but u' ≣ {u'}, with X ≣ {X}"
+      let Bₛ : Q($X -> Tyₛ.{u}) <- mkFreshExprMVarQ q($X -> Tyₛ.{u})
+      let fTy <- inferType f -- q(Nat -> Type)
+      let fTy_code : Q(Tyₛ.{u}) <- getTyₛ (u := u) fTy -- q("Nat -> Type")
+      let fTy_code_A : Q(Type (u+1)) := q(TyₛA.{u,u} $fTy_code) -- q("Nat -> Type"ᴬ) ≣ fTy ≣ q(Nat -> "Type"ᴬ)
+      unless <- isDefEq fTy_code_A fTy do throwError "getTmₛ defeq failed, (TyₛA ∘ getTyₛ) doesn't roundtrip somehow\nfTy ≣ {fTy}\nfTy_code_A ≣ {fTy_code_A}"
+      unless <- isDefEq fTy_code_A q((x : $X) -> TyₛA.{u,u} ($Bₛ x)) do throwError "getTmₛ defeq failed \nfTy ≣ {fTy}\nexpected ≣ {q((x : $X) -> TyₛA.{u,u} ($Bₛ x))}"
+      unless <- isDefEq Aₛ q($Bₛ $x) do throwError "getTmₛ defeq failed\nAₛ ≣ {Aₛ}\nBₛ x ≣ {q($Bₛ $x)}"
+      let f : Q((x : $X) -> TyₛA.{u,u} ($Bₛ $x)) := f -- this is okay because of the defeq checks above
+      let fTm /-: Q(Tmₛ $Γₛ (Tyₛ.SPi $X $Bₛ))-/ <- getTmₛ mblock Γₛ (mkApp2 q(Tyₛ.SPi.{u}) X Bₛ) f
+      let ret := mkAppN q(@Tmₛ.app.{u}) #[Γₛ, X, Bₛ, fTm, x]
+      let ret <- instantiateMVars ret
+      return ret
+    | _ => throwError "oh no, getTmₛ {T}"
 
 elab "getTmₛ! " T:term:max : term => do
   let ind <- resolve T
@@ -134,8 +153,9 @@ namespace Test
   | cc : (n : Nat) -> Fin n -> TT 44 .aa
   | ccc : (n : Nat) -> TT (.succ n) .aaa -> TT n .aaa
 
-  example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) (Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U)
+  def myexample : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) (Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U)
     := getTmₛ! TT
+  #print myexample
   example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) ((fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) 44)
     := getTmₛ! (TT 44)
   example : Tmₛ (⬝ ▹ Tyₛ.SPi Nat fun n => Tyₛ.SPi (AA n) fun a => Tyₛ.U) ((fun a => Tyₛ.U) AA.aa)
