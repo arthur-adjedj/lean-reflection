@@ -48,8 +48,7 @@ theorem mkLConₛ_coherent : (t : Tmₛ Γₛ Aₛ) -> (σ : Subₛ Ωₛ Γₛ)
 | .var .vz          , .cons σ s => rfl
 | .var (.vs v)      , .cons σ s => by
   -- have ih : TmₛA (Tmₛ.var v) (mkConₛ' Ωₛ Ωₚ σ) = mkTyₛ Ωₛ Ωₚ (SubₛTm (Tmₛ.var v) σ)
-  --   := mkLConₛ_coherent (.var v) σ
-  rw [TmₛA_var]
+    -- := mkLConₛ_coherent (.var v) σ
   simp_all only [TmₛA_var, SubₛTm, VarₛA, SubₛVar]
   sorry
   done
@@ -97,8 +96,8 @@ def mkLTyₚ' (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ Ωₛ) :
         (Tmₛ.app (gTmₛ (mkEConₛ Ωₛ Ωₚ) Self) (Eq.rec selfE mkEConₛ_coherent.symm)) -- : Tmₛ (gConₛ Ωₛ (mkEConₛ Ωₛ Ωₚ)) U
         (gTyₚ (mkEConₛ Ωₛ Ωₚ) Rest (TmₚA tE (mkEConₚ Ωₛ Ωₚ) (Eq.rec selfE mkEConₛ_coherent.symm)))
       )
-    := Tmₚ.app tG (Eq.rec selfE mkEConₛ_coherent.symm)
-  let tGeg := Tmₚ.appr tGe (h' ▸ selfG)
+    := Tmₚ.app tG (Eq.rec selfE mkEConₛ_coherent.symm) -- ! here's the important bit (.app erased)
+  let tGeg := Tmₚ.appr tGe (h' ▸ selfG) -- ! also important, (.appr guard)
 
   let exp : Tmₚ
     (gConₚ (mkEConₛ Ωₛ Ωₚ) Ωₚ (mkEConₚ Ωₛ Ωₚ))
@@ -107,7 +106,6 @@ def mkLTyₚ' (Ωₛ : Conₛ.{u}) (Ωₚ : Conₚ Ωₛ) :
       rw [TmₚA]
       rw [mkEConₚ_coherent_bad]
       rw [mkEConₚ_coherent_bad] at tGeg
-      -- conv => arg 2; arg 3; arg 3
       have : (mkETyₚ_bad Ωₛ Ωₚ tE (Eq.rec selfE mkEConₛ_coherent.symm)) = (mkETyₚ_bad Ωₛ Ωₚ tE (TmₚA selfE (mkEConₚ Ωₛ Ωₚ)))
         := by
           rw [mkEConₚ, mkConₚ]
@@ -132,22 +130,23 @@ def _VecL.cons := mkLTyₚ.{0} Vₛ (Vₚ String) (.var .vz)
 -- set_option maxHeartbeats 20000000 -- even 20000000 is not enough lmao
 -- #reduce _VecL.cons
 
+#reduce TyₚA V_cons (mkLConₛ Vₛ (Vₚ String))
+
 #check Nₛ
 #check N
 #reduce mkLTyₚ.{0} Nₛ N (.var (.vs .vz))
 #reduce mkLTyₚ.{0} Nₛ (Conₚ.ext Conₚ.nil (PPi Nat (fun _ => El (.var .vz)))) (.var .vz)
 -- #reduce mkLTyₚ.{0} Nₛ N (.var .vz)
 
-#reduce TyₚA V_cons (mkLConₛ Vₛ (Vₚ String))
 
-example :
-    _VecL.cons =
-    fun (n : Nat) (x : String) (v : TmₛA (Tmₛ.app (Tmₛ.var Varₛ.vz) n) (mkLConₛ Vₛ (Vₚ String))) =>
-      ⟨
-        Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) (ULift.up n)) x) v.fst,
-        Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) n) x) v.fst) v.snd
-      ⟩
-  := sorry
+-- example :
+--     _VecL.cons =
+--     fun (n : Nat) (x : String) (v : TmₛA (Tmₛ.app (Tmₛ.var Varₛ.vz) n) (mkLConₛ Vₛ (Vₚ String))) =>
+--       ⟨
+--         Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) (ULift.up n)) x) v.fst,
+--         Tmₚ.appr (Tmₚ.app (Tmₚ.app (Tmₚ.app (Tmₚ.var Varₚ.vz) n) x) v.fst) v.snd
+--       ⟩
+--   := sorry
 
 namespace Example
   universe u v

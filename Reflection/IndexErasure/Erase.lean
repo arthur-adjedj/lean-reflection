@@ -70,16 +70,6 @@ theorem mkEConₛ_coherent {t : Tmₛ Ωₛ Aₛ} : TmₛA (eTmₛ t) (mkEConₛ
   rw [mkEConₛ, mkETyₛ, mkConₛ]
   rw [mkConₛ_coherent]
   rw [SubₛTm_id]
-  -- induction t with
-  -- | var v =>
-  --   simp [eTmₛ, TmₛA_var, mkTyₛ]
-  --   induction v with
-  --   | vz => rfl
-  --   | vs v =>
-  --     simp only [eVarₛ, VarₛA]
-  --     rw [SubₛTm]
-  --     rw [SubₛVar_id]
-  -- | app t u ih => rw [eTmₛ, ih]
 
 theorem mkEConₚ_coherent {Ωₛ : Conₛ} {Ωₚ : Conₚ Ωₛ} {Aₚ : Tyₚ Ωₛ} {t : Tmₚ Ωₚ Aₚ}
   : TmₚA (eTmₚ t) (mkEConₚ Ωₛ Ωₚ) = mkETyₚ Ωₛ Ωₚ t
