@@ -57,12 +57,15 @@ mutual
   /-- | Pi {Γ} : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ -/
   | Pi : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> ETy
 
+
   @[aesop unsafe constructors cases]
   inductive EVar : Type
+  /-- `vz {Γ} {A} : Var (Con.ext Γ A) (substTy A wk)` -/
   | vz : (Γ : ECon) -> (A : ETy) -> EVar
-  /-- `vs {Γ} : Var Γ A -> Var (Γ, B) A` -/
+  /-- `vs {Γ} {A B : Ty Γ} : Var Γ A -> Var (Γ, B) (substTy A wk)` -/
   | vs : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> EVar -> EVar
 
+  /-- `Tm : (Γ : Con) -> Ty Γ -> Type` -/
   @[aesop unsafe constructors cases]
   inductive ETm : Type
   /-- `var : Var Γ A -> Tm Γ A` -/
@@ -76,30 +79,30 @@ mutual
 
   @[aesop unsafe constructors cases]
   inductive ESubst : Type
+  /-- `Subst.nil : Subst Γ Con.nil` -/
   | nil : (Γ : ECon) -> ESubst
+  /-- `cons : (δ : Subst Γ Δ) -> (t : Tm Γ (substTy A δ)) -> Subst Γ (Δ, A)` -/
   | cons : (Γ : ECon) -> (Δ : ECon) -> (A : ETy) -> ESubst -> ETm -> ESubst
 end
 
 mutual
-  @[aesop unsafe]
   def substVarE : EVar -> ESubst -> ETm
   | .vz _ _, .cons _ _ _ _ t => t
   | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
   | _, _ => .error
 
-  @[aesop unsafe]
   def substConE : ECon -> ESubst -> ECon
   | .nil    , σ => .nil
   | .ext Γ A, σ => .ext (substConE Γ σ) (substTyE A σ)
 
-  @[aesop unsafe]
+  /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
   def substTmE : ETm -> ESubst -> ETm
   | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
   | .app Γ A B f a, σ => .app (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE f σ) (substTmE a σ)
   | .lam Γ A B body, σ => .lam (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE body σ)
   | .error, _ => .error
 
-  @[aesop unsafe]
+  /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ` -/
   def substTyE : ETy -> ESubst -> ETy
   | .U Γ, σ => .U (substConE Γ σ)
   | .El Γ t, σ => .El (substConE Γ σ) (substTmE t σ)
@@ -107,29 +110,58 @@ mutual
 end
 
 
+-- This is so fiddly, because you can't rely on the typechecker...
 mutual
-  /-- `Tm Γ A -> Tm (Γ, B) A` -/
-  @[aesop unsafe]
-  def vshiftTmE : ETm -> ETm
-  | .var Γ A v => .var (.vs v)
-  | .app A B f a => .app (vshift f) (vshift a)
-  | .lam body => .lam (vshift body)
+  def derp (X : ETy /- Γ -/): ETy /- (Γ, A) -/ -> ETy /- (Γ, X, A[wk]) -/ := sorry
+
+  /-- `vshift {Γ : Con} {A X : Ty Γ} : Tm Γ A -> Tm (Γ, X) (substTy A wk)` -/
+  def vshiftE (Γ : ECon) (A X : ETy) : ETm -> ETm
+  | .var Γ A v => -- `v : Var Γ A`   ⊢   `Tm (Γ, X) (substTy A wk)`
+    .var (.ext Γ X)
+      -- `.var (Γ, X) : (A : Ty (Γ, X)) -> Var (Γ, X) A -> Tm (Γ, X) A`
+      (substTyE A (weakenE Γ Γ X (idE Γ))) -- `weaken Subst.id : Subst (Γ, X) Γ`    `substTyE A wk : Ty (Γ, X)`
+      -- `.var (Γ, X) (substTy A wk) : Var (Γ, X) (substTy A wk) -> Tm (Γ, X) (substTy A wk)`
+      (.vs Γ A X -- `.vs Γ A X : Var Γ A -> Var (Γ, X) (substTy A wk)`
+        v
+      )
+  -- Reminder: `Tm.app {Γ} : {A : Ty Γ} -> {B : Ty (Γ, A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`
+  | .app Γ A B f a => -- Have   `A : Ty Γ`    `B : Ty (Γ, A)`   `f : Tm Γ (Pi A B)`    `a : Tm Γ A`     expecting `Tm (Γ, X) B[a][wk]`, note that `B[a] : Ty Γ`, and then `B[a][wk] : Ty (Γ, X)`
+    .app (.ext Γ X) -- `app (Γ, X) : (A : Ty (Γ, X)) -> {B : Ty (Γ, X, A)} -> (f : Tm (Γ, X) (Pi A B)) -> (a : Tm (Γ, X) A) -> Tm (Γ, X) B[Var.vz ↦ a]`
+      (substTyE A (weakenE Γ Γ X (idE Γ))) -- this argument is `A[wk]`
+      -- `app (Γ, X) A[wk] : {B : Ty (Γ, X, A[wk])} -> (f : Tm (Γ, X) (Pi A[wk] B)) -> (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) B[Var.vz ↦ a]`
+      -- ! Now the problem is that we have `B : Ty (Γ, A)`, but we expect `Ty (Γ, X, A[wk])`. Fortunately we know that `A` doesn't depend on `X`, so we can reorder it.
+      -- ! ...but how.
+      (derp X B) -- just assume such a function can be implemented
+      -- `app (Γ, X) A[wk] (derp X B) : (f : Tm (Γ, X) (Pi A[wk] (derp X B))) -> (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
+      (vshiftE Γ (.Pi Γ A B) X f) -- `vshift f : Tm (Γ, X) (Pi A B)[wk]` -- ! Need (β?)-theorem: `(Pi A B)[wk] = Pi A[wk] (derp X B)`, then cast this arg with it
+      -- `app (Γ, X) A[wk] (derp X B) (vshift f) : (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
+      (vshiftE Γ A X a) -- `vshift a : Tm (Γ, X) A[wk]`
+      -- `app (Γ, X) A[wk] (derp X B) (vshift f) (vshift a) : Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
+
+  | .lam Γ A B body => sorry
+    -- .lam (.ext Γ B) A B (vshiftE body)
   | .error => .error
 
-  -- def vshiftTmE : ETm -> ETm
+  /-- `weaken : Subst Γ Δ -> Subst (Γ, X) Δ` -/
+  def weakenE (Γ Δ : ECon) (X : ETy) : ESubst -> ESubst
+  | .nil Γ => .nil (.ext Γ X)
+  | .cons Γ Δ A σ t => .cons (.ext Γ X) Δ X
+    (weakenE Γ Δ X σ) -- `σ : Subst Γ Δ`     `weaken σ : Subst (Γ, A) Δ`
+    (vshiftE Γ A X t) -- `t : Tm Γ A`     `vshift t : Tm (Γ, X) A[wk]`
+
+  /-- `Subst Γ Γ` -/
+  def idE : (Γ : ECon) -> ESubst
+  | .nil => .nil .nil -- `Subst .nil .nil`
+  | .ext Γ A => -- ⊢ `Subst (Γ, A) (Γ, A)`
+    -- `cons : (Γ Δ : Con) -> (A : Ty Δ) -> (δ : Subst Γ Δ) -> (t : Tm Γ A[δ]) -> Subst Γ (Δ, A)`
+    .cons (.ext Γ A) Γ A
+      -- `cons (Γ, A) Γ A : (δ : Subst (Γ, A) Γ) -> (t : Tm (Γ, A) A[δ]) -> Subst (Γ, A) (Γ, A)`
+      (weakenE Γ Γ A (idE Γ))
+      -- `cons (Γ, A) Γ A wk : (t : Tm (Γ, A) A[wk]) -> Subst (Γ, A) (Γ, A)`
+      (.var Γ A (.vz Γ A))
 end
 
-/-- `Subst Γ Δ -> Subst (Γ, A) Δ` -/
-@[aesop unsafe]
-def ESubst.weaken : ESubst -> ESubst
-| .nil => .nil
-| .cons σ t => .cons (weaken σ) (vshift t)
-
-/-- `Subst Γ Γ` -/
-@[aesop unsafe]
-def ESubst.id : ECon -> ESubst
-| .nil => .nil
-| .ext Γ A => .cons (weaken (id Γ)) (.var .vz)
+#exit
 
 /-- `Subst (Γ, A) Γ`. This is usually two functions chained together: `wk id`, but we only need this version. -/
 @[aesop unsafe]
@@ -149,7 +181,7 @@ mutual
 
   @[aesop safe constructors unsafe cases]
   inductive WTy : ECon -> ETy -> Prop
-  | U : WTy Γe .U
+  | U : WTy Γe (.U Γe)
   | El : WTm Γe .U tE -> WTy Γe (.El tE)
   | Pi : (Aw : WTy Γe Ae) -> (Bw : WTy (.ext Γe Ae) Be) -> WTy Γe (.Pi Ae Be)
   /-- A mutual inductive type which may refer to existing types in Γ, and has type A. -/
@@ -202,7 +234,7 @@ theorem WSubst.vshift (Γw : WCon Γe) (Aw : WTy Γe Ae) (Bw : WTy (.ext Γe Ae)
     -- | .error, h => sorry
 
 /-- `Subst Γ Δ -> Subst (Γ, A) Δ` -/
-def WSubst.weaken (Γw : WCon Γe) (Δw : WCon Δe) (Aw : WTy Γe Ae) : (σw : WSubst Γe Δe σe) -> WSubst (.ext Γe Ae) Δe (ESubst.weaken σe) := sorry
+def WSubst.weaken (Γw : WCon Γe) (Δw : WCon Δe) (Aw : WTy Γe Ae) : (σw : WSubst Γe Δe σe) -> WSubst (.ext Γe Ae) Δe (weakenE σe) := sorry
 
 /-- `Subst Γ Γ` -/
 def WSubst.id (Γw : WCon Γe) : WSubst Γe Γe (ESubst.id Γe) := sorry
@@ -256,6 +288,60 @@ section Hooray
   -- def Tm.lam
   -- def Tm.var
 end Hooray
+
+def weaken : Subst Γ Δ -> Subst (.ext Γ A) Δ := sorry
+
+/-
+  def vshiftE (Γ : ECon) (A X : ETy) : ETm -> ETm
+  | .var Γ A v => -- `v : Var Γ A`   ⊢   `Tm (Γ, X) (substTy A wk)`
+    .var (.ext Γ X)
+      -- `.var (Γ, X) : (A : Ty (Γ, X)) -> Var (Γ, X) A -> Tm (Γ, X) A`
+      (substTyE A (weakenE Γ Γ X (idE Γ))) -- `weaken Subst.id : Subst (Γ, X) Γ`    `substTyE A wk : Ty (Γ, X)`
+      -- `.var (Γ, X) (substTy A wk) : Var (Γ, X) (substTy A wk) -> Tm (Γ, X) (substTy A wk)`
+      (.vs Γ A X -- `.vs Γ A X : Var Γ A -> Var (Γ, X) (substTy A wk)`
+        v
+      )
+  -- Reminder: `Tm.app {Γ} : {A : Ty Γ} -> {B : Ty (Γ, A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`
+-- ! | .app Γ A B f a => -- Have   `A : Ty Γ`    `B : Ty (Γ, A)`   `f : Tm Γ (Pi A B)`    `a : Tm Γ A`      expecting `Tm (Γ, X) B[a][wk]`       note that `B[a] : Ty Γ`, and then `B[a][wk] : Ty (Γ, X)`
+    .app (.ext Γ X) -- `app (Γ, X) : (A : Ty (Γ, X)) -> {B : Ty (Γ, X, A)} -> (f : Tm (Γ, X) (Pi A B)) -> (a : Tm (Γ, X) A) -> Tm (Γ, X) B[Var.vz ↦ a]`
+      (substTyE A (weakenE Γ Γ X (idE Γ)))
+      -- `app (Γ, X) A[wk] : {B : Ty (Γ, X, A[wk])} -> (f : Tm (Γ, X) (Pi A[wk] B)) -> (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) B[Var.vz ↦ a]`
+
+    --   (vshiftE Γ (.Pi Γ A B) B f) -- f : Tm Γ (Pi _ _)
+    --   (vshiftE Γ A B a) -- a : Tm Γ A
+  | .lam Γ A B body =>
+    .lam (.ext Γ B) A B (vshiftE body)
+  | .error => .error
+
+-/
+#check vshiftE
+def vshift {Γ : Con} {A X : Ty Γ} : Tm Γ A -> Tm (.ext Γ X) (substTy A wk)
+| ⟨.var .., w⟩ => by
+  have v : Var Γ A := sorry
+  have goal : Tm (.ext Γ X) (substTy A wk) := sorry -- Tm.var
+  sorry
+| ⟨.app .., w⟩ =>
+  have B : Ty (.ext Γ A) := sorry -- from pattern matching
+  have f : Tm Γ (.Pi A B) := sorry -- from pattern matching
+  have a : Tm Γ A := sorry -- from pattern matching
+  -- unify Γ with `Γ` (because of pattern matching)
+  -- unify A with `B[a]` (because of pattern matching)
+
+  let a' : Tm (.ext Γ X) (substTy A wk) := vshift a
+  let f' : Tm (.ext Γ X) (.Pi (substTy A wk) B) := sorry
+
+  have goal : Tm (.ext Γ X) (substTy (substTy B (subst1 a)) wk) := by -- expected `Tm (Γ, X) B[a][wk]`, note that `B[a] : Ty Γ`, and then `B[a][wk] : Ty (Γ, X)`
+    have asdf := @Tm.app (.ext Γ X) (substTy A wk)
+
+    done
+  sorry
+| ⟨.lam .., w⟩ => sorry
+| ⟨.error, _⟩ => sorry
+
+-- def
+
+
+#exit
 
 -- # And now... the eliminator
 
