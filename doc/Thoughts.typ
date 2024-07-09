@@ -91,28 +91,74 @@ dependency on an external type, and as such we can use an actual function there.
 Inductive occurences of the inductive type being declared can not be dependent.
 
 But for terms, we can have actual dependent functions, which makes things harder.
-
-
-== Why we need substitutions: `Tm.app`
-In the following
+Most notably, we need substitution while specifying some constructors, as the following naive
+approach does not typecheck.
+`Tm Γ B` is ill-typed, because $Γ, x:A ⊢ B type$, but we expect something "$Γ ⊢ B type$".
 ```lean
 inductive Tm : (Γ : Con) → (A : Ty Γ) → Type where
-| El : (Δ : Con) → Tm Δ (Ty.U Δ)
 | app : (Γ : Con) -> (A : Ty Γ) -> (B : Ty (Con.ext Γ A)) ->
         (f : Tm Γ (Ty.pi Γ A B)) ->
         (a : Tm Γ A) ->
         Tm Γ B
 ```
-we get error message:
-```
-application type mismatch
-  Tm Γ B
-argument
-  B
-has type
-  Ty (Con.ext Γ A) : Type
-but is expected to have type
-  Ty Γ : Type
-```
-In your normal type theory if you have $Γ, x:A ⊢ B "type"$,
-then you can just do $Γ ⊢ B[x |-> a]$ and now it's a type in $Γ$.
+
+The solution to this problem is an _inductive-inductive-recursive type_ (IIRT),
+where we define `Con`, `Ty`, `Tm` as inductive types, and substitution as a recursive function
+on those types, all in the same mutual block.
+
+So far, codes for dependent terms have been studied as quotient inductive-inductive types (QIIT),
+see for example Ambrus Kaposi's work.
+The QIIT approach requires many additional constructors which emulate invoking substitutions,
+and then defining the quotient of those types by specifying the expected substitution computation
+rules as equalities to the quotient, and along with some additional rules such as associativity
+of substitution.
+
+I am not aware of any approach with IIRTs.
+IIRTs are promising because you hopefully get better computational properties, and a more natural
+representation.
+Lean does not support either inductive-inductive (IIT) or inductive-recursive (IRT) types, and
+definitely not both together, but pretending that it does, the resulting ideal IIRT can be found
+in @originaliirt.
+This does not yet include a way of adding new mutual inductive types, but that can be easily
+retrofitted later by adding a new constructor `Ty.mutualinductive ...`.
+
+#figure(caption: [The original IIRT for dependently typed terms, not feasible (directly) in Lean 4.])[
+```lean
+mutual
+  inductive Con : Type
+  | nil : Con
+  | ext : (Γ : Con) -> (A : Ty Γ) -> Con
+
+  inductive Ty : Con -> Type
+  | U : Ty Γ
+  | El : Tm Γ U -> Ty Γ
+  | Pi : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ
+
+  inductive Tm : (Γ : Con) -> Ty Γ -> Type
+  | var : Var Γ A -> Tm Γ A
+  | app : {A : Ty Γ} ->
+          {B : Ty (ext Γ A)} ->
+          (f : Tm Γ (Pi A B)) ->
+          (a : Tm Γ A) ->
+          Tm Γ B[Var.vz ↦ a]
+  | lam : {A : Ty Γ} ->
+          {B : Ty (ext Γ A)} ->
+          (body : Tm (ext Γ A) B) ->
+          Tm Γ (Pi A B)
+
+  inductive Subst : (Γ : Con) -> (Δ : Con) -> Type
+  | nil : Subst Γ .nil
+  | cons : (δ : Subst Γ Δ) -> Tm Γ (substTy δ A) -> Subst Γ (Δ, A)
+
+  def substTy {Γ Δ : Con} : Ty Δ -> Subst Γ Δ -> Ty Γ
+  | U, σ => U
+  | El Self, σ => El (substTm Self σ)
+  | Pi A B, σ => ???
+  | mind, σ => ???
+
+  def substTm {Γ Δ : Con} : Tm Δ A -> (σ : Subst Γ Δ) -> Tm Γ A[σ]
+  | var v, σ => substVar v σ
+  | app f a, σ => app (substTm f σ) ?a
+  | lam body, σ => ???
+end
+```] <originaliirt>

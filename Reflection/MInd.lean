@@ -518,11 +518,12 @@ def SubₛCon : Conₚ Δₛ -> Subₛ Γₛ Δₛ -> Conₚ Γₛ
 | ⬝, _ => ⬝
 | Γ ▹ A, σ => SubₛCon Γ σ ▹ SubₛTy A σ
 
+set_option pp.explicit true in
 /-- Increment all de brujin indices in this term by one. -/
 -- @[aesop unsafe]
 @[aesop safe]
 def vshift : {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> Tmₛ (Γₛ ▹ Bₛ) Aₛ
-| _, .var v => .var (.vs v)
+| .(Aₛ), @Tmₛ.var Γₛ Aₛ v => @Tmₛ.var (Γₛ ▹ Bₛ) Aₛ (@Varₛ.vs Γₛ Aₛ Bₛ v)
 | _, .app (A := _A) t u => .app (vshift t) u
 
 @[aesop safe]
