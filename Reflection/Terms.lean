@@ -1,4 +1,5 @@
 import Aesop
+import Reflection.Util.Vec
 set_option linter.unusedVariables false
 set_option pp.fieldNotation.generalized false
 
@@ -49,6 +50,7 @@ mutual
   inductive ECon : Type
   | nil : ECon
   | ext : ECon -> ETy -> ECon
+  deriving Repr
 
   @[aesop unsafe constructors cases]
   inductive ETy : Type
@@ -56,7 +58,7 @@ mutual
   | El : ECon -> ETm -> ETy
   /-- | Pi {Γ} : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ -/
   | Pi : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> ETy
-
+  deriving Repr
 
   @[aesop unsafe constructors cases]
   inductive EVar : Type
@@ -64,6 +66,7 @@ mutual
   | vz : (Γ : ECon) -> (A : ETy) -> EVar
   /-- `vs {Γ} {A B : Ty Γ} : Var Γ A -> Var (Γ, B) (substTy A wk)` -/
   | vs : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> EVar -> EVar
+  deriving Repr
 
   /-- `Tm : (Γ : Con) -> Ty Γ -> Type` -/
   @[aesop unsafe constructors cases]
@@ -76,6 +79,7 @@ mutual
   | lam : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (body : ETm) -> ETm
   /-- necessary because of substVarE. Will be proven impossible in the final IIRT. -/
   | error : ETm
+  deriving Repr
 
   @[aesop unsafe constructors cases]
   inductive ESubst : Type
@@ -83,6 +87,7 @@ mutual
   | nil : (Γ : ECon) -> ESubst
   /-- `cons : (δ : Subst Γ Δ) -> (t : Tm Γ (substTy A δ)) -> Subst Γ (Δ, A)` -/
   | cons : (Γ : ECon) -> (Δ : ECon) -> (A : ETy) -> ESubst -> ETm -> ESubst
+  deriving Repr
 end
 
 mutual
@@ -109,17 +114,23 @@ mutual
   | .Pi Γ A B, σ => .Pi (substConE Γ σ) (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
 end
 
-
--- This is so fiddly, because you can't rely on the typechecker...
 mutual
-  def derp (X : ETy /- Γ -/): ETy /- (Γ, A) -/ -> ETy /- (Γ, X, A[wk]) -/ := sorry
+  /-- Increments all de brujin variables except the variable 0. -/
+  def weaken_skip_1 (X : ETy /- Γ -/): ETy /- (Γ, A) -/ -> ETy /- (Γ, X, A[wk]) -/ := fun _ => .El .nil .error -- HACKY
 
   /-- `vshift {Γ : Con} {A X : Ty Γ} : Tm Γ A -> Tm (Γ, X) (substTy A wk)` -/
-  def vshiftE (Γ : ECon) (A X : ETy) : ETm -> ETm
-  | .var Γ A v => -- `v : Var Γ A`   ⊢   `Tm (Γ, X) (substTy A wk)`
+  def vshiftE (X : ETy) : (t : ETm) -> ETm
+  | (ETm.var Γ A v) => -- `v : Var Γ A`   ⊢   `Tm (Γ, X) (substTy A wk)`
+    -- have : sizeOf Γ < sizeOf X := sorry
+    -- have : sizeOf X < sizeOf (ETm.var Γ A v) := sorry
+    -- let idΓ := idE Γ
+    let ΓX := ECon.ext Γ X
     .var (.ext Γ X)
       -- `.var (Γ, X) : (A : Ty (Γ, X)) -> Var (Γ, X) A -> Tm (Γ, X) A`
-      (substTyE A (weakenE Γ Γ X (idE Γ))) -- `weaken Subst.id : Subst (Γ, X) Γ`    `substTyE A wk : Ty (Γ, X)`
+
+      -- (substTyE A (weakenE X (idE Γ))) -- `weaken Subst.id : Subst (Γ, X) Γ`    `substTyE A wk : Ty (Γ, X)`
+      (substTyE A (weakenE X (idE Γ))) -- `weaken Subst.id : Subst (Γ, X) Γ`    `substTyE A wk : Ty (Γ, X)`
+
       -- `.var (Γ, X) (substTy A wk) : Var (Γ, X) (substTy A wk) -> Tm (Γ, X) (substTy A wk)`
       (.vs Γ A X -- `.vs Γ A X : Var Γ A -> Var (Γ, X) (substTy A wk)`
         v
@@ -127,27 +138,28 @@ mutual
   -- Reminder: `Tm.app {Γ} : {A : Ty Γ} -> {B : Ty (Γ, A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`
   | .app Γ A B f a => -- Have   `A : Ty Γ`    `B : Ty (Γ, A)`   `f : Tm Γ (Pi A B)`    `a : Tm Γ A`     expecting `Tm (Γ, X) B[a][wk]`, note that `B[a] : Ty Γ`, and then `B[a][wk] : Ty (Γ, X)`
     .app (.ext Γ X) -- `app (Γ, X) : (A : Ty (Γ, X)) -> {B : Ty (Γ, X, A)} -> (f : Tm (Γ, X) (Pi A B)) -> (a : Tm (Γ, X) A) -> Tm (Γ, X) B[Var.vz ↦ a]`
-      (substTyE A (weakenE Γ Γ X (idE Γ))) -- this argument is `A[wk]`
+      (substTyE A (weakenE A (idE Γ))) -- this argument is `A[wk]`
       -- `app (Γ, X) A[wk] : {B : Ty (Γ, X, A[wk])} -> (f : Tm (Γ, X) (Pi A[wk] B)) -> (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) B[Var.vz ↦ a]`
       -- ! Now the problem is that we have `B : Ty (Γ, A)`, but we expect `Ty (Γ, X, A[wk])`. Fortunately we know that `A` doesn't depend on `X`, so we can reorder it.
       -- ! ...but how.
-      (derp X B) -- just assume such a function can be implemented
+      (weaken_skip_1 X B) -- just assume such a function can be implemented
       -- `app (Γ, X) A[wk] (derp X B) : (f : Tm (Γ, X) (Pi A[wk] (derp X B))) -> (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
-      (vshiftE Γ (.Pi Γ A B) X f) -- `vshift f : Tm (Γ, X) (Pi A B)[wk]` -- ! Need (β?)-theorem: `(Pi A B)[wk] = Pi A[wk] (derp X B)`, then cast this arg with it
+      (vshiftE X f) -- `vshift f : Tm (Γ, X) (Pi A B)[wk]` -- ! Need (β?)-theorem: `(Pi A B)[wk] = Pi A[wk] (derp X B)`, then cast this arg with it
       -- `app (Γ, X) A[wk] (derp X B) (vshift f) : (a : Tm (Γ, X) A[wk]) -> Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
-      (vshiftE Γ A X a) -- `vshift a : Tm (Γ, X) A[wk]`
+      (vshiftE X a) -- `vshift a : Tm (Γ, X) A[wk]`
       -- `app (Γ, X) A[wk] (derp X B) (vshift f) (vshift a) : Tm (Γ, X) (derp X B)[Var.vz ↦ a]`
-
-  | .lam Γ A B body => sorry
+  | .lam Γ A B body => .error
     -- .lam (.ext Γ B) A B (vshiftE body)
   | .error => .error
+  termination_by t => sizeOf X + sizeOf t
 
   /-- `weaken : Subst Γ Δ -> Subst (Γ, X) Δ` -/
-  def weakenE (Γ Δ : ECon) (X : ETy) : ESubst -> ESubst
+  def weakenE (X : ETy) : ESubst -> ESubst
   | .nil Γ => .nil (.ext Γ X)
   | .cons Γ Δ A σ t => .cons (.ext Γ X) Δ X
-    (weakenE Γ Δ X σ) -- `σ : Subst Γ Δ`     `weaken σ : Subst (Γ, A) Δ`
-    (vshiftE Γ A X t) -- `t : Tm Γ A`     `vshift t : Tm (Γ, X) A[wk]`
+    (weakenE X σ) -- `σ : Subst Γ Δ`     `weaken σ : Subst (Γ, X) Δ`
+    (vshiftE X t) -- `t : Tm Γ A`     `vshift t : Tm (Γ, X) A[wk]`
+  termination_by σ => sizeOf σ
 
   /-- `Subst Γ Γ` -/
   def idE : (Γ : ECon) -> ESubst
@@ -156,10 +168,19 @@ mutual
     -- `cons : (Γ Δ : Con) -> (A : Ty Δ) -> (δ : Subst Γ Δ) -> (t : Tm Γ A[δ]) -> Subst Γ (Δ, A)`
     .cons (.ext Γ A) Γ A
       -- `cons (Γ, A) Γ A : (δ : Subst (Γ, A) Γ) -> (t : Tm (Γ, A) A[δ]) -> Subst (Γ, A) (Γ, A)`
-      (weakenE Γ Γ A (idE Γ))
+      (weakenE A (idE Γ))
       -- `cons (Γ, A) Γ A wk : (t : Tm (Γ, A) A[wk]) -> Subst (Γ, A) (Γ, A)`
       (.var Γ A (.vz Γ A))
+  termination_by Γ => sizeOf Γ
+
+  -- def wkE (Γ : ECon) (A : ETy) : ESubst := weakenE A (idE Γ)
+  -- termination_by 1 + sizeOf Γ
 end
+
+#reduce idE .nil
+#eval idE (.ext .nil (.U .nil))
+#check weakenE
+
 
 #exit
 
