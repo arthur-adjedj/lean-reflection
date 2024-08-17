@@ -26,7 +26,7 @@ mutual
   /-- `Var : (Γ : Con) -> Ty Γ -> Type` -/
   @[aesop unsafe constructors cases]
   inductive EVar : Type
-  /-- `vz {Γ} {A} : Var (Con.ext Γ A) (substTy A wk)` -/
+  /-- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wk id]`, note that `wk id : (Γ, A) <- Γ`, thus `Γ, A ⊢ A[wk id]` -/
   | vz : (Γ : ECon) -> (A : ETy) -> EVar
   /-- `vs {Γ} {A B : Ty Γ} : Var Γ A -> Var (Γ, B) (substTy A wk)` -/
   | vs : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> EVar -> EVar
@@ -35,9 +35,10 @@ mutual
   /-- `Tm : (Γ : Con) -> Ty Γ -> Type` -/
   @[aesop unsafe constructors cases]
   inductive ETm : Type
-  /-- `var : Var Γ A -> Tm Γ A` -/
+  /-- `var {Γ} {A : Ty Γ} : Var Γ A -> Tm Γ A` -/
   | var : (Γ : ECon) -> (A : ETy) -> EVar -> ETm
-  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`, here note that `Var.vz ↦ a` can be written as `Subst.cons Subst.id a`. -/
+  -- /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`, here note that `Var.vz ↦ a` can be written as `Subst.cons Subst.id a`. -/
+  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[id, a]` -/
   | app : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (f : ETm) -> (a : ETm) -> ETm
   /-- `lam {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (body : Tm (ext Γ A) B) -> Tm Γ (Pi A B)` -/
   | lam : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (body : ETm) -> ETm
@@ -51,104 +52,72 @@ mutual
   | nil : (Γ : ECon) -> ESubst
   /-- `cons : (δ : Subst Γ Δ) -> (t : Tm Γ (substTy A δ)) -> Subst Γ (Δ, A)` -/
   | cons : (Γ : ECon) -> (Δ : ECon) -> (A : ETy) -> ESubst -> ETm -> ESubst
-  -- /-- `weaken : (σ : Subst Γ Δ) -> (X : Ty Γ) -> Subst (Γ, X) Δ` -/
-  -- | weaken : (Γ Δ : ECon) -> (σ : ESubst) -> (X : ETy) -> ESubst
   deriving Repr
-
-  -- inductive ESubst : Type
-  -- /-- `id {Γ : Con} : Subst Γ Γ` -/
-  -- | id : ESubst
-  -- /-- `wk {Γ : Con} {A : Ty Γ} : Subst (Con.ext Γ A) Γ` -/
-  -- | wk : ESubst
-  -- /-- `app {Γ : Con} {A : Ty Γ} (a : Tm Γ A) : Subst Γ (Con.ext Γ A)` -/
-  -- | app (a : ETm) : ESubst
-  -- /-- `comp {Γ Δ Θ : Con} : Subst Γ Δ -> Subst Δ Θ -> Subst Γ Θ` -/
-  -- | comp : ESubst -> ESubst -> ESubst
 end
-
--- section Whatif
---   inductive Con : Type
---   inductive Ty : Con -> Type
---   axiom Con.ext : (Γ : Con) -> Ty Γ -> Con
---   inductive Tm : (Γ : Con) -> Ty Γ -> Type
---   inductive Subst : Con -> Con -> Type
---   | id : Subst Γ Γ
---   | wk : Subst (.ext Γ A) Γ
---   | app (a : Tm Γ A) : Subst Γ (.ext Γ A)
---   | comp : Subst Γ Δ -> Subst Δ Θ -> Subst Γ Θ
--- end Whatif
-
--- -- Reconstruct the type index of the value.
--- def ETy.Γ : ETy -> ECon
--- | .U Γ => Γ
--- | .El Γ t => Γ
--- | .Pi Γ A B => Γ
--- def EVar.Γ : EVar -> ECon
--- | .vz Γ A => .ext Γ A
--- | .vs Γ A B v => .ext Γ B
--- def EVar.A : EVar -> ETy
--- | .vz Γ A => sorry -- (substTy A wk)
--- | .vs Γ A B v => sorry -- (substTy A wk)
 
 mutual
   /-- Look up the term stored in a substitution. -/
   def substVarE : EVar -> ESubst -> ETm
   | .vz _ _    , .cons _ _ _ _ t => t
   | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
-  -- | .vz _ _    , .weaken Γ Δ σ X => t
-  -- | .vs _ _ _ v, .weaken Γ Δ σ X => substVarE v σ
   | _, _ => .error
-
-  -- def substConE : ECon -> ESubst -> ECon
-  -- | .nil    , σ => .nil
-  -- | .ext Γ A, σ => .ext (substConE Γ σ) (substTyE A σ)
-
-  /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
-  def substTmE (Γ Δ : ECon) : ETm -> ESubst -> ETm
-  | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
-  | .app Δ A B f a, σ => -- Δ
-    .app Γ (substTyE Γ Δ A σ) (substTyE B σ) (substTmE f σ) (substTmE a σ)
-  | .lam Δ A B body, σ => .lam Γ (substTyE A σ) (substTyE B σ) (substTmE body σ)
-  | .error, _ => .error
+  termination_by v _ => sizeOf v
 
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ` -/
   def substTyE (Γ Δ : ECon) : ETy -> ESubst -> ETy
   | .U Δ, σ => .U Γ
-  | .El Δ t, σ => .El Γ (substTmE t σ)
-  | .Pi Δ A B, σ => .Pi Γ (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
+  | .El Δ t, σ => .El Γ (substTmE Γ Δ t σ)
+  | .Pi Δ A B, σ => -- Δ ⊢ A
+    let A' : ETy /- Γ -/ := substTyE Γ Δ A σ -- Γ ⊢ A[σ]
+    let wk_σ : ESubst := wkE Γ Δ A' σ -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wk id)`
+    let A'' : ETy := substTyE (.ext Γ A') Δ A wk_σ -- `A[wk σ] : (Γ, A[σ])`
+    let vz : ETm /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ A') A'' (.vz Γ A') -- `.vz Γ A' : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = σ ∘ (wk id)`
+    let δ : ESubst /- (Γ, A[σ]) <- (Δ, A) -/ := ESubst.cons (.ext Γ A') Δ A (wk_σ) vz
+    .Pi Γ A' (substTyE (.ext Γ A') (.ext Δ A) B δ)
+  termination_by A σ => sizeOf A + sizeOf σ
+
+  /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
+  def substTmE (Γ Δ : ECon) : ETm -> ESubst -> ETm
+  | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
+  | .app _Δ A B f a, σ => -- expected `Tm Γ B[id, a][σ]`
+    let A' : ETy /- Γ -/ := substTyE Γ Δ A σ -- Γ ⊢ A[σ]
+    let wk_σ : ESubst := wkE Γ Δ A' σ -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wk id)`
+    let A'' : ETy /- (Γ, A[σ]) -/ := substTyE (.ext Γ A') Δ A wk_σ
+    let vz : ETm /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ A') A'' (.vz Γ A') -- `.vz Γ A' : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = σ ∘ (wk id)`
+    let δ : ESubst /- (Γ, A[σ]) <- (Δ, A) -/ := ESubst.cons (.ext Γ A') Δ A (wk_σ) vz
+
+    let B' : ETy := substTyE (.ext Γ A') (.ext Δ A) B δ
+    let f' : ETm := substTmE Γ Δ f σ -- `f[σ] : Tm Γ (Pi A B)[σ]`, where `(Pi A B)[σ] = Pi A[σ] B[wk σ, #0]` per definition of substTy
+    let a' : ETm := substTmE Γ Δ a σ -- `a[σ] : Tm Γ A[σ]`
+    let fa' : ETm := .app Γ A' B' f' a' -- `.app f[σ] a[σ] : Tm Γ B[wk σ, #0][id, a]`
+    fa' -- ! here we need `((wk σ), #0) ∘ (id, a) = (id, a) ∘ σ` to typecheck.
+  | .lam Δ A B body, σ => sorry
+  | .error, _ => .error
+  termination_by t σ => sizeOf t + sizeOf σ
+
+  /-- `wk {Γ Δ : Con} {W : Ty Γ} : Subst Γ Δ -> Subst (Γ, W) Δ` -/
+  def wkE (Γ _Δ : ECon) (W : ETy) : ESubst -> ESubst
+  | .nil Δ => .nil (.ext Γ W)
+  | .cons _ Δ A σ a => -- A : Ty Δ,   σ : Γ <- Δ,   a : Tm Γ A[σ],    expecting (Γ, W) <- (Δ, A)
+    let wk_σ := wkE Γ Δ W σ -- `wk σ : (Γ, W) <- Δ`
+    let A_wk_σ := substTyE (.ext Γ W) Δ A wk_σ -- `A[wk σ] : Ty (Γ, W)`
+    let a' : ETm := substTmE Γ (.ext Γ W) a (wkE Γ Γ W (idE Γ)) -- `a[wk id] : Tm (Γ, W) A[σ][wk id]`
+    let δ : ETm -> ESubst := .cons (.ext Γ W) Δ A wk_σ -- `δ : Tm (Γ, W) A[wk σ] -> ((Γ, W) <- (Δ, A))`
+    δ a' -- ! We use `σ ∘ (wk id) = wk σ` here (at the `a'`)
+  termination_by σ => sizeOf σ
+
+  /-- `id {Γ : Con} : Subst Γ Γ` -/
+  def idE : (Γ : ECon) -> ESubst
+  | .nil => .nil .nil -- `Subst .nil .nil`
+  | .ext Γ A => -- expecting `(Γ, A) <- (Γ, A)`
+    let wk1 := wkE Γ Γ A (idE Γ) -- `wk1 : (Γ, A) <- Γ`
+    .cons (.ext Γ A) Γ A -- `cons (Γ, A) Γ A : (δ : (Γ, A) <- Γ) -> (t : Tm (Γ, A) A[δ]) -> ((Γ, A) <- (Γ, A))`
+      wk1 -- `cons (Γ, A) Γ A wk1 : (t : Tm (Γ, A) A[wk]) -> Subst (Γ, A) (Γ, A)`
+      (.var (.ext Γ A) (substTyE (.ext Γ A) Γ A wk1) (.vz Γ A))
+  termination_by Γ => sizeOf Γ
 end
 
-
-/-
-`weakenCon : (Γ : Con) -> (X : Ty Γ) -> Con := Con.ext Γ X`
-`weakenTy (Γ : Con) (X : Ty Γ) : Ty Γ -> Ty (weakenCon Γ X)`
-`weakenTm (Γ : Con) (X : Ty Γ) : Tm Γ A -> Tm (weakenCon Γ X) (weakenTy Γ X A)`
--/
-
-mutual
-  /-- `weakenCon (Γ : Con) (X : Ty Γ) : Con := Con.ext Γ X` -/
-  def weakenConE (Γ : ECon) (X : ETy) : ECon := ECon.ext Γ X
-
-  /-- `weakenTy (Γ : Con) (X : Ty Γ) : Ty Γ -> Ty (weakenCon Γ X)` -/
-  def weakenTyE (Γ : ECon) (X : ETy) : ETy -> ETy
-  | .U Γ => .U (.ext Γ X)
-
-  -- `Γ ⊢ (a : A) -> B`
-  | .Pi Γ A B => .Pi (.ext Γ X)
-    (weakenTyE Γ X A) -- `Γ ⊢ A`, then `Γ, X ⊢ A[wk]`
-    (weakenTyE (.ext Γ A) (weakenTyE Γ X A) B) -- ! bad: `Γ, A ⊢ B`, then `Γ, A, X[wk] ⊢ B[wk]`, but we actually want `Γ, X, A[wk] ⊢ B[??]`
-    -- `Γ, A ⊢ B`, then `Γ ⊢ λa:A, B`, now...
-
-  /-- `weakenVar (Γ : Con) (X : Ty Γ) : Var Γ A -> Var (weakenCon Γ X) (weakenTy Γ X A)`. -/
-  def weakenVarE (Γ : ECon) (X : ETy) : EVar -> EVar := sorry
-
-  /-- `weakenTm (Γ : Con) (X : Ty Γ) : Tm Γ A -> Tm (weakenCon Γ X) (weakenTy Γ X A)`. -/
-  def weakenTmE (Γ : ECon) (X : ETy) : ETm -> ETm := sorry
-
-  /-- `weakenSubst : Subst Γ Δ -> Subst (Γ, X) Δ` -/
-  def weakenSubstE (X : ETy) : ESubst -> ESubst := sorry
-end
-
+#exit
 -- #exit
 
 mutual
