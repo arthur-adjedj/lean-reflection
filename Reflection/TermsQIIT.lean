@@ -1,49 +1,8 @@
 import Aesop
 import Reflection.Util.Vec
+
 set_option linter.unusedVariables false
 set_option pp.fieldNotation.generalized false
-
-/- # The original IIRT
-mutual
-  inductive Con : Type
-  | nil : Con
-  | ext : (Γ : Con) -> (A : Ty Γ) -> Con
-
-  inductive Ty : Con -> Type
-  | U : Ty Γ
-  | El : Tm Γ U -> Ty Γ
-  | Pi : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ
-  /-- A mutual inductive type which may refer to existing types in Γ, and has type A. -/
-  | mind : MInd /- Γ -/ A -> Ty Γ
-
-  inductive Tm : (Γ : Con) -> Ty Γ -> Type
-  | var : Var Γ A -> Tm Γ A
-  | app : {A : Ty Γ} ->
-          {B : Ty (ext Γ A)} ->
-          (f : Tm Γ (Pi A B)) ->
-          (a : Tm Γ A) ->
-          Tm Γ B[Var.vz ↦ a]
-  | lam : {A : Ty Γ} ->
-          {B : Ty (ext Γ A)} ->
-          (body : Tm (ext Γ A) B) ->
-          Tm Γ (Pi A B)
-
-  inductive Subst : (Γ : Con) -> (Δ : Con) -> Type
-  | nil : Subst Γ .nil
-  | cons : (δ : Subst Γ Δ) -> Tm Γ (substTy δ A) -> Subst Γ (Δ, A)
-
-  def substTy {Γ Δ : Con} : Ty Δ -> Subst Γ Δ -> Ty Γ
-  | U, σ => U
-  | El Self, σ => El (substTm Self σ)
-  | Pi A B, σ => ???
-  | mind, σ => ???
-
-  def substTm {Γ Δ : Con} : Tm Δ A -> (σ : Subst Γ Δ) -> Tm Γ A[σ]
-  | var v, σ => substVar v σ
-  | app f a, σ => app (substTm f σ) ?a
-  | lam body, σ => ???
-end
--/
 
 mutual
   @[aesop unsafe constructors cases]
@@ -52,14 +11,19 @@ mutual
   | ext : ECon -> ETy -> ECon
   deriving Repr
 
+  /-- `Ty : Con -> Type` -/
   @[aesop unsafe constructors cases]
   inductive ETy : Type
+  /-- `U Γ : Ty Γ` -/
   | U : ECon -> ETy
+  /-- `El {Γ} : (t : Tm Γ U) -> Ty Γ` -/
   | El : ECon -> ETm -> ETy
-  /-- | Pi {Γ} : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ -/
+  /-- `Pi {Γ} : (A : Ty Γ) -> (B : Ty (ext Γ A)) -> Ty Γ` -/
   | Pi : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> ETy
+  -- | substTy : ETy -> ESubst -> ETy
   deriving Repr
 
+  /-- `Var : (Γ : Con) -> Ty Γ -> Type` -/
   @[aesop unsafe constructors cases]
   inductive EVar : Type
   /-- `vz {Γ} {A} : Var (Con.ext Γ A) (substTy A wk)` -/
@@ -73,7 +37,7 @@ mutual
   inductive ETm : Type
   /-- `var : Var Γ A -> Tm Γ A` -/
   | var : (Γ : ECon) -> (A : ETy) -> EVar -> ETm
-  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]` -/
+  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[Var.vz ↦ a]`, here note that `Var.vz ↦ a` can be written as `Subst.cons Subst.id a`. -/
   | app : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (f : ETm) -> (a : ETm) -> ETm
   /-- `lam {Γ} : {A : Ty Γ} -> {B : Ty (ext Γ A)} -> (body : Tm (ext Γ A) B) -> Tm Γ (Pi A B)` -/
   | lam : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (body : ETm) -> ETm
@@ -87,32 +51,105 @@ mutual
   | nil : (Γ : ECon) -> ESubst
   /-- `cons : (δ : Subst Γ Δ) -> (t : Tm Γ (substTy A δ)) -> Subst Γ (Δ, A)` -/
   | cons : (Γ : ECon) -> (Δ : ECon) -> (A : ETy) -> ESubst -> ETm -> ESubst
+  -- /-- `weaken : (σ : Subst Γ Δ) -> (X : Ty Γ) -> Subst (Γ, X) Δ` -/
+  -- | weaken : (Γ Δ : ECon) -> (σ : ESubst) -> (X : ETy) -> ESubst
   deriving Repr
+
+  -- inductive ESubst : Type
+  -- /-- `id {Γ : Con} : Subst Γ Γ` -/
+  -- | id : ESubst
+  -- /-- `wk {Γ : Con} {A : Ty Γ} : Subst (Con.ext Γ A) Γ` -/
+  -- | wk : ESubst
+  -- /-- `app {Γ : Con} {A : Ty Γ} (a : Tm Γ A) : Subst Γ (Con.ext Γ A)` -/
+  -- | app (a : ETm) : ESubst
+  -- /-- `comp {Γ Δ Θ : Con} : Subst Γ Δ -> Subst Δ Θ -> Subst Γ Θ` -/
+  -- | comp : ESubst -> ESubst -> ESubst
 end
 
+-- section Whatif
+--   inductive Con : Type
+--   inductive Ty : Con -> Type
+--   axiom Con.ext : (Γ : Con) -> Ty Γ -> Con
+--   inductive Tm : (Γ : Con) -> Ty Γ -> Type
+--   inductive Subst : Con -> Con -> Type
+--   | id : Subst Γ Γ
+--   | wk : Subst (.ext Γ A) Γ
+--   | app (a : Tm Γ A) : Subst Γ (.ext Γ A)
+--   | comp : Subst Γ Δ -> Subst Δ Θ -> Subst Γ Θ
+-- end Whatif
+
+-- -- Reconstruct the type index of the value.
+-- def ETy.Γ : ETy -> ECon
+-- | .U Γ => Γ
+-- | .El Γ t => Γ
+-- | .Pi Γ A B => Γ
+-- def EVar.Γ : EVar -> ECon
+-- | .vz Γ A => .ext Γ A
+-- | .vs Γ A B v => .ext Γ B
+-- def EVar.A : EVar -> ETy
+-- | .vz Γ A => sorry -- (substTy A wk)
+-- | .vs Γ A B v => sorry -- (substTy A wk)
+
 mutual
+  /-- Look up the term stored in a substitution. -/
   def substVarE : EVar -> ESubst -> ETm
-  | .vz _ _, .cons _ _ _ _ t => t
+  | .vz _ _    , .cons _ _ _ _ t => t
   | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
+  -- | .vz _ _    , .weaken Γ Δ σ X => t
+  -- | .vs _ _ _ v, .weaken Γ Δ σ X => substVarE v σ
   | _, _ => .error
 
-  def substConE : ECon -> ESubst -> ECon
-  | .nil    , σ => .nil
-  | .ext Γ A, σ => .ext (substConE Γ σ) (substTyE A σ)
+  -- def substConE : ECon -> ESubst -> ECon
+  -- | .nil    , σ => .nil
+  -- | .ext Γ A, σ => .ext (substConE Γ σ) (substTyE A σ)
 
   /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
-  def substTmE : ETm -> ESubst -> ETm
+  def substTmE (Γ Δ : ECon) : ETm -> ESubst -> ETm
   | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then.... uh... welp.
-  | .app Γ A B f a, σ => .app (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE f σ) (substTmE a σ)
-  | .lam Γ A B body, σ => .lam (substConE Γ σ) (substTyE A σ) (substTyE B σ) (substTmE body σ)
+  | .app Δ A B f a, σ => -- Δ
+    .app Γ (substTyE Γ Δ A σ) (substTyE B σ) (substTmE f σ) (substTmE a σ)
+  | .lam Δ A B body, σ => .lam Γ (substTyE A σ) (substTyE B σ) (substTmE body σ)
   | .error, _ => .error
 
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ` -/
-  def substTyE : ETy -> ESubst -> ETy
-  | .U Γ, σ => .U (substConE Γ σ)
-  | .El Γ t, σ => .El (substConE Γ σ) (substTmE t σ)
-  | .Pi Γ A B, σ => .Pi (substConE Γ σ) (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
+  def substTyE (Γ Δ : ECon) : ETy -> ESubst -> ETy
+  | .U Δ, σ => .U Γ
+  | .El Δ t, σ => .El Γ (substTmE t σ)
+  | .Pi Δ A B, σ => .Pi Γ (substTyE A σ) (substTyE B σ) -- not sure about the `substTyE B σ` here.
 end
+
+
+/-
+`weakenCon : (Γ : Con) -> (X : Ty Γ) -> Con := Con.ext Γ X`
+`weakenTy (Γ : Con) (X : Ty Γ) : Ty Γ -> Ty (weakenCon Γ X)`
+`weakenTm (Γ : Con) (X : Ty Γ) : Tm Γ A -> Tm (weakenCon Γ X) (weakenTy Γ X A)`
+-/
+
+mutual
+  /-- `weakenCon (Γ : Con) (X : Ty Γ) : Con := Con.ext Γ X` -/
+  def weakenConE (Γ : ECon) (X : ETy) : ECon := ECon.ext Γ X
+
+  /-- `weakenTy (Γ : Con) (X : Ty Γ) : Ty Γ -> Ty (weakenCon Γ X)` -/
+  def weakenTyE (Γ : ECon) (X : ETy) : ETy -> ETy
+  | .U Γ => .U (.ext Γ X)
+
+  -- `Γ ⊢ (a : A) -> B`
+  | .Pi Γ A B => .Pi (.ext Γ X)
+    (weakenTyE Γ X A) -- `Γ ⊢ A`, then `Γ, X ⊢ A[wk]`
+    (weakenTyE (.ext Γ A) (weakenTyE Γ X A) B) -- ! bad: `Γ, A ⊢ B`, then `Γ, A, X[wk] ⊢ B[wk]`, but we actually want `Γ, X, A[wk] ⊢ B[??]`
+    -- `Γ, A ⊢ B`, then `Γ ⊢ λa:A, B`, now...
+
+  /-- `weakenVar (Γ : Con) (X : Ty Γ) : Var Γ A -> Var (weakenCon Γ X) (weakenTy Γ X A)`. -/
+  def weakenVarE (Γ : ECon) (X : ETy) : EVar -> EVar := sorry
+
+  /-- `weakenTm (Γ : Con) (X : Ty Γ) : Tm Γ A -> Tm (weakenCon Γ X) (weakenTy Γ X A)`. -/
+  def weakenTmE (Γ : ECon) (X : ETy) : ETm -> ETm := sorry
+
+  /-- `weakenSubst : Subst Γ Δ -> Subst (Γ, X) Δ` -/
+  def weakenSubstE (X : ETy) : ESubst -> ESubst := sorry
+end
+
+-- #exit
 
 mutual
   /-- Increments all de brujin variables except the variable 0. -/
@@ -196,7 +233,7 @@ def ESubst.subst1 (Γe : ECon) (te : ETm) : ESubst := .cons (id Γe) te
 
 mutual
   @[aesop safe constructors unsafe cases]
-  inductive WCon : ECon -> Type
+  inductive WCon : ECon -> Prop
   | nil : WCon .nil
   | ext : (Γw : WCon Γe) -> (Aw : WTy Γe Ae) -> WCon (ECon.ext Γe Ae)
 
@@ -209,12 +246,12 @@ mutual
   -- | mind : MInd /- Γ -/ A -> Ty Γ
 
   @[aesop safe constructors unsafe cases]
-  inductive WVar : ECon -> ETy -> EVar -> Type
+  inductive WVar : ECon -> ETy -> EVar -> Prop
   | vz : WVar (ECon.ext Γe Ae) (substTyE Ae (ESubst.wk Γe)) EVar.vz
   | vs : WVar Γe Ae ve -> WVar (ECon.ext Γe Be) (substTyE Ae (ESubst.wk Γe)) (EVar.vs ve)
 
   @[aesop safe constructors unsafe cases]
-  inductive WTm : ECon -> ETy -> ETm -> Type
+  inductive WTm : ECon -> ETy -> ETm -> Prop
   | var : WVar Γe Ae ve -> WTm Γe Ae (.var ve)
   | app {Ae Be : ETy} :
           {Aw : WTy Γe Ae} ->              -- A : Ty Γ
@@ -228,7 +265,7 @@ mutual
           WTm Γe (.Pi Ae Be) (.lam bodye)
 
   @[aesop safe constructors unsafe cases]
-  inductive WSubst : ECon -> ECon -> ESubst -> Type
+  inductive WSubst : ECon -> ECon -> ESubst -> Prop
   | nil : WSubst Γe Δe .nil
   | cons : WSubst Γe Δe δe -> WTm Γe (substTyE Ae δe) tE -> WSubst Γe (ECon.ext Δe Ae) (.cons δe tE)
 end
