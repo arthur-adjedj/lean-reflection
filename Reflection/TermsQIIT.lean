@@ -55,26 +55,52 @@ mutual
   deriving Repr
 end
 
-mutual
-  /-- Look up the term stored in a substitution. -/
-  def substVarE : EVar -> ESubst -> ETm
-  | .vz _ _    , .cons _ _ _ _ t => t
-  | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
-  | _, _ => .error
-  termination_by v _ => sizeOf v
+/-- Look up the term stored in a substitution. -/
+def substVarE : EVar -> ESubst -> ETm
+| .vz _ _    , .cons _ _ _ _ t => t
+| .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
+| _, _ => .error
 
+mutual
+  @[simp] def ECon.size : ECon -> Nat
+  | .nil => 1
+  | .ext Γ A => 1 + Γ.size + A.size
+
+  @[simp] def ETy.size : ETy -> Nat
+  | .U Δ => 1
+  | .El Δ t => 1 + t.size
+  | .Pi Δ A B => 1 + A.size + B.size
+
+  @[simp] def EVar.size : EVar -> Nat
+  | .vz .. => 1
+  | .vs _ _ _ v => 1 + v.size
+
+  @[simp] def ETm.size : ETm -> Nat
+  | .var _ A v => 1 + A.size + v.size
+  | .app _ A B f a => 1 + A.size + B.size + f.size + a.size
+  | .lam _ A B v => 1 + A.size + B.size + v.size
+  | .error => 0
+
+  @[simp] def ESubst.size : ESubst -> Nat
+  | .nil .. => 1
+  | .cons Γ Δ A σ a => 1 + A.size + σ.size + a.size
+end
+
+mutual
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ` -/
-  def substTyE (Γ Δ : ECon) : ETy -> ESubst -> ETy
+  def substTyE (Γ Δ : ECon) : ETy -> ESubst -> ETy --:= fun A σ => match h : A , σ with
   | .U Δ, σ => .U Γ
   | .El Δ t, σ => .El Γ (substTmE Γ Δ t σ)
   | .Pi Δ A B, σ => -- Δ ⊢ A
     let A' : ETy /- Γ -/ := substTyE Γ Δ A σ -- Γ ⊢ A[σ]
     let wk_σ : ESubst := wkE Γ Δ A' σ -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wk id)`
+    have : sizeOf (wkE Γ Δ A' σ) = 0 := by simp_all [sizeOf]
+    -- * Terminates, because
     let A'' : ETy := substTyE (.ext Γ A') Δ A wk_σ -- `A[wk σ] : (Γ, A[σ])`
     let vz : ETm /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ A') A'' (.vz Γ A') -- `.vz Γ A' : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = σ ∘ (wk id)`
     let δ : ESubst /- (Γ, A[σ]) <- (Δ, A) -/ := ESubst.cons (.ext Γ A') Δ A (wk_σ) vz
     .Pi Γ A' (substTyE (.ext Γ A') (.ext Δ A) B δ)
-  termination_by A σ => sizeOf A + sizeOf σ
+  termination_by A σ => A.size + σ.size
 
   /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
   def substTmE (Γ Δ : ECon) : ETm -> ESubst -> ETm
@@ -93,10 +119,10 @@ mutual
     fa' -- ! here we need `((wk σ), #0) ∘ (id, a) = (id, a) ∘ σ` to typecheck.
   | .lam Δ A B body, σ => sorry
   | .error, _ => .error
-  termination_by t σ => sizeOf t + sizeOf σ
+  termination_by t σ => t.size
 
   /-- `wk {Γ Δ : Con} {W : Ty Γ} : Subst Γ Δ -> Subst (Γ, W) Δ` -/
-  def wkE (Γ _Δ : ECon) (W : ETy) : ESubst -> ESubst
+  def wkE (Γ Δ : ECon) (W : ETy) : ESubst -> ESubst -- ! sizeOf wk is constant
   | .nil Δ => .nil (.ext Γ W)
   | .cons _ Δ A σ a => -- A : Ty Δ,   σ : Γ <- Δ,   a : Tm Γ A[σ],    expecting (Γ, W) <- (Δ, A)
     let wk_σ := wkE Γ Δ W σ -- `wk σ : (Γ, W) <- Δ`
@@ -104,7 +130,7 @@ mutual
     let a' : ETm := substTmE Γ (.ext Γ W) a (wkE Γ Γ W (idE Γ)) -- `a[wk id] : Tm (Γ, W) A[σ][wk id]`
     let δ : ETm -> ESubst := .cons (.ext Γ W) Δ A wk_σ -- `δ : Tm (Γ, W) A[wk σ] -> ((Γ, W) <- (Δ, A))`
     δ a' -- ! We use `σ ∘ (wk id) = wk σ` here (at the `a'`)
-  termination_by σ => sizeOf σ
+  termination_by σ => σ.size
 
   /-- `id {Γ : Con} : Subst Γ Γ` -/
   def idE : (Γ : ECon) -> ESubst
@@ -114,7 +140,7 @@ mutual
     .cons (.ext Γ A) Γ A -- `cons (Γ, A) Γ A : (δ : (Γ, A) <- Γ) -> (t : Tm (Γ, A) A[δ]) -> ((Γ, A) <- (Γ, A))`
       wk1 -- `cons (Γ, A) Γ A wk1 : (t : Tm (Γ, A) A[wk]) -> Subst (Γ, A) (Γ, A)`
       (.var (.ext Γ A) (substTyE (.ext Γ A) Γ A wk1) (.vz Γ A))
-  termination_by Γ => sizeOf Γ
+  termination_by Γ => Γ.size
 end
 
 #exit
