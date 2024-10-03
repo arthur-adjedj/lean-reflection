@@ -4,17 +4,17 @@ import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Ring
 
 set_option linter.unusedVariables false
-set_option pp.fieldNotation.generalized false
+-- set_option pp.fieldNotation.generalized false
 
 mutual
-  @[aesop unsafe constructors cases]
+  @[aesop unsafe]
   inductive ECon : Type
   | nil : ECon
   | ext : ECon -> ETy -> ECon
   deriving Repr, Inhabited
 
   /-- `Ty : Con -> Type` -/
-  @[aesop unsafe constructors cases]
+  @[aesop unsafe]
   inductive ETy : Type
   /-- `U Γ : Ty Γ` -/
   | U : ECon -> ETy
@@ -25,7 +25,7 @@ mutual
   deriving Repr, Inhabited
 
   /-- `Var : (Γ : Con) -> Ty Γ -> Type` -/
-  @[aesop unsafe constructors cases]
+  @[aesop unsafe]
   inductive EVar : Type
   /-- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]`, note that `wki : (Γ, A) <- Γ`, and `@wki Γ A = wkn (Γ, A) 1`, and `wki = wk id`. -/
   | vz : (Γ : ECon) -> (A : ETy) -> EVar
@@ -34,14 +34,14 @@ mutual
   deriving Repr, Inhabited
 
   /-- `Tm : (Γ : Con) -> Ty Γ -> Type` -/
-  @[aesop unsafe constructors cases]
+  @[aesop unsafe]
   inductive ETm : Type
   /-- `var {Γ} {A : Ty Γ} : Var Γ A -> Tm Γ A` -/
   | var : (Γ : ECon) -> (A : ETy) -> EVar -> ETm
-  /-- `app {Γ} : {A : Ty Γ} -> {B : Ty (Γ, A)} -> (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[id, a]`.\
+  /-- `app {Γ : Con} {A : Ty Γ} {B : Ty (Γ, A)} : (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[id, a]`.\
     Note that the substitution `(id, a) : Γ <- (Γ, A)` intuitively instantiates de-Brujin variable #0 with `a : Tm Γ A`.  -/
   | app : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (f : ETm) -> (a : ETm) -> ETm
-  /-- `lam {Γ} : {A : Ty Γ} -> {B : Ty (Γ, A)} -> (body : Tm (Γ, A) B) -> Tm Γ (Pi A B)` -/
+  /-- `lam {Γ} {A : Ty Γ} {B : Ty (Γ, A)} : (body : Tm (Γ, A) B) -> Tm Γ (Pi A B)` -/
   | lam : (Γ : ECon) -> (A : ETy) -> (B : ETy) -> (body : ETm) -> ETm
   /-- Only necessary because of substVarE. Will be proven impossible in the final IIRT. -/
   | error : ETm
@@ -49,7 +49,7 @@ mutual
 
   /-- A substitution `σ : Γ <- Δ` maps every variable in `Δ` to a `Γ`-term.
     Intuitively, it is a list of length `Δ.length` storing terms typed in context `Γ`. -/
-  @[aesop unsafe constructors cases]
+  @[aesop unsafe]
   inductive ESubst : Type
   /-- `Subst.nil {Γ} : Γ <- ⬝` -/
   | nil : (Γ : ECon) -> ESubst
@@ -60,54 +60,54 @@ end
 
 -- different "sizeOf", ignoring type indices.
 mutual
-  @[simp] def ECon.size : ECon -> Nat
+  @[aesop unsafe] def ECon.size : ECon -> Nat
   | .nil => 1
   | .ext Γ A => 1 + Γ.size + A.size
 
-  @[simp] def ETy.size : ETy -> Nat
+  @[aesop unsafe] def ETy.size : ETy -> Nat
   | .U Δ => 1
   | .El Δ t => 1 + t.size
   | .Pi Δ A B => 1 + A.size + B.size
 
-  @[simp] def EVar.size : EVar -> Nat
+  @[aesop unsafe] def EVar.size : EVar -> Nat
   | .vz .. => 0
   | .vs _ _ _ v => 1 + v.size
 
-  @[simp] def ETm.size : ETm -> Nat
+  @[aesop unsafe] def ETm.size : ETm -> Nat
   | .var _ _ v => 1 + v.size
   | .app _ _ _ f a => 1 + f.size + a.size
   | .lam _ _ _ body => 1 + body.size
   | .error => 0
 
-  @[simp] def ESubst.size : ESubst -> Nat
+  @[aesop unsafe] def ESubst.size : ESubst -> Nat
   | .nil .. => 1
   | .cons _ _ _ σ t => 1 + σ.size + t.size
 end
 
 /-- Look up the term stored in a substitution. -/
-def substVarE : EVar -> ESubst -> ETm
+@[aesop unsafe] def substVarE : EVar -> ESubst -> ETm
 | .vz _ _    , .cons _ _ _ _ t => t
 | .vs _ _ _ v, .cons _ _ _ σ _ => substVarE v σ
 | _, _ => .error
 
-def ECon.len : ECon -> Nat
+@[aesop unsafe] def ECon.len : ECon -> Nat
 | .nil => 0
 | .ext Γ A => 1 + Γ.len
 
-def ESubst.len : ESubst -> Nat
+@[aesop unsafe] def ESubst.len : ESubst -> Nat
 | .nil _ => 0
 | .cons _ _ _ σ _ => 1 + σ.len
 
 /-- Notation: `Γ - n`. Drop the last `n` variables in the context.
   Example: `drop (Con.nil, A, B, C) 1 ≡ (Con.nil, A, B)`. -/
-@[simp] def ECon.drop : (Γ : ECon) -> Fin (Γ.len + 1) -> ECon
+@[aesop unsafe] def ECon.drop : (Γ : ECon) -> Fin (Γ.len + 1) -> ECon
 | .nil    , n => .nil
 | .ext Γ A, ⟨0  , h⟩ => Γ
 | .ext Γ A, ⟨n+1, h⟩ => Γ.drop ⟨n, by rw [len] at h; linarith⟩
 
 /-- Notation: `Γᵥ`. Get the type of the de-Brujin variable `v`.
    `get : (Γ : Con) -> (v : Fin Γ.len) -> Ty (drop Γ (v+1))`. -/
-@[simp] def ECon.get : (Γ : ECon) -> (v : Fin Γ.len) -> ETy
+@[aesop unsafe] def ECon.get : (Γ : ECon) -> (v : Fin Γ.len) -> ETy
 | .nil    , v => Fin.elim0 v
 | .ext Γ A, ⟨0  , h⟩ => A
 | .ext Γ A, ⟨v+1, h⟩ => -- expected `Ty (drop (Γ, A) (v+1+1))`
@@ -118,16 +118,78 @@ def ESubst.len : ESubst -> Nat
 @[aesop safe] theorem ECon.len_le_sizeOf (Γ : ECon) : Γ.len <= Γ.size := sorry
 @[aesop safe] theorem ESubst.len_le_sizeOf (σ : ESubst) : σ.len <= σ.size := sorry
 
-def sum (lower upper : Nat) (f : Nat -> Nat) : Nat :=
+open ECon ESubst ETy ETm EVar
+
+-- Bodyless definitions. Replace these and theorems about these with `variable`s later.
+axiom substTy (Γ Δ : ECon) : ETy -> ESubst -> ETy
+axiom substTm (Γ Δ : ECon) : ETm -> ESubst -> ETm
+axiom wkn (Γ : ECon) (n : Fin (Γ.len + 1)) : ESubst
+axiom mkVar : (Γ : ECon) -> (v : Fin Γ.len) -> EVar
+axiom comp (Γ Θ Δ : ECon) : ESubst -> ESubst -> ESubst
+
+/-- "Big sum" operator $Σ_{i = lower}^{upper} f(i)$. -/
+@[aesop unsafe] def sum (lower upper : Nat) (f : Nat -> Nat) : Nat :=
   if lower <= upper then (f lower) + sum (lower + 1) upper f else 0
   termination_by 1 + upper - lower
 
-/-- `(wknE Γ n).size`. Because `wkn (Con.nil, A, B, C) 1 ≡ (Subst.nil, Tm.var #2, Tm.var #1)`,
+@[aesop unsafe] theorem sum_begin : sum lower upper f = f lower + sum (lower + 1) upper f := sorry
+@[aesop unsafe] theorem sum_end : sum lower (upper + 1) f = sum lower upper f + f (upper + 1) := sorry
+
+/-- `(wkn Γ n).size`. Because `wkn (Con.nil, A, B, C) 1 ≡ (Subst.nil, Tm.var #2, Tm.var #1)`,
   so `1` for `Subst.nil`, and then for every term in the subst we have 1 for `Subst.cons`,
   1 for `Tm.var`, and `i` for de brujin `#i`. The `i` may not even be necessary actually,
   making the `sum` needless, but for now I've included `i` just in case. -/
-def wknE.size (Γ : ECon) (n : Fin (Γ.len + 1)) : Nat := 1 + sum n.val (Γ.len - 1) (fun i => 2 + i)
--- theorem wknE_size (Γ : ECon) (n : Fin (Γ.len) + 1) : (wkn Γ n).size = wknE.size Γ n := sorry
+@[aesop unsafe] def wkn.size (Γ : ECon) (n : Fin (Γ.len + 1)) : Nat := 1 + sum n.val (Γ.len - 1) (fun i => 2 + i)
+@[aesop unsafe, simp] theorem wkn_size (Γ : ECon) (n : Fin (Γ.len + 1)) : (wkn Γ n).size = wkn.size Γ n := sorry
+
+@[aesop safe, simp] theorem Fin.add_val_pull {n : Fin (N + 1)} : n < N -> @Fin.val (N + 1) (n + 1) = (@Fin.val (N + 1) n) + 1 := sorry
+
+-- ## cost functions
+@[simp] noncomputable abbrev substTy? (Γ Δ : ECon) (A : ETy) (σ : ESubst) : Nat := Γ.size + (substTy Γ Δ A σ).size + (wkn (.ext Γ (substTy Γ Δ A σ)) 1).size
+@[simp] noncomputable abbrev substTm? (Γ Δ : ECon) (t : ETm) (σ : ESubst) : Nat := 0
+@[simp] noncomputable abbrev wkn? (Γ : ECon) (n : Fin (Γ.len + 1)) : Nat := Γ.size + Γ.len - n + (wkn Γ n).size
+@[simp] noncomputable abbrev mkVar? (Γ : ECon) (v : Fin Γ.len) : Nat := Γ.size + (wkn Γ ⟨v+1, by aesop⟩).size + v
+@[simp] noncomputable abbrev comp? (Γ Θ Δ : ECon) (δ σ : ESubst) : Nat := δ.size + σ.size
+
+-- ## one theorem per recursive callsite
+
+theorem substTy_1 (t : ETm) (σ : ESubst) : substTm? Γ Δ t σ < substTy? Γ Δ (.El Δ t) σ := sorry
+theorem substTy_2 (A B : ETy) (σ : ESubst) : substTy? Γ Δ A σ < substTy? Γ Δ (.Pi Δ A B) σ := sorry
+theorem substTy_3 (A B : ETy) (σ : ESubst) : wkn? (.ext Γ (substTy Γ Δ A σ)) 1 < substTy? Γ Δ (.Pi Δ A B) σ := sorry
+theorem substTy_4 (A B : ETy) (σ : ESubst) : comp? (.ext Γ (substTy Γ Δ A σ)) Γ Δ σ (wkn (.ext Γ (substTy Γ Δ A σ)) 1) < substTy? Γ Δ (.Pi Δ A B) σ := sorry
+theorem substTy_5 (A B : ETy) (σ : ESubst) : substTy? (.ext Γ (substTy Γ Δ A σ)) (.ext Δ A) B (comp (.ext Γ (substTy Γ Δ A σ)) Γ Δ σ (wkn (.ext Γ (substTy Γ Δ A σ)) 1)) < substTy? Γ Δ (.Pi Δ A B) σ := sorry
+
+theorem substTm_1 (f a : ETm) (σ : ESubst) : substTm? Γ Δ f σ < substTm? Γ Δ (.app Δ A B f a) σ := sorry
+theorem substTm_2 (f a : ETm) (σ : ESubst) : substTm? Γ Δ a σ < substTm? Γ Δ (.app Δ A B f a) σ := sorry
+theorem substTm_3 (f a : ETm) (σ : ESubst) : wkn? (.ext Γ (substTy Γ Δ A σ)) 1 < substTm? Γ Δ (.app Δ A B f a) σ := sorry
+theorem substTm_4 (f a : ETm) (σ : ESubst) : comp? (.ext Γ (substTy Γ Δ A σ)) Γ Δ σ (wkn (.ext Γ (substTy Γ Δ A σ)) 1) < substTm? Γ Δ (.app Δ A B f a) σ := sorry
+theorem substTm_5 (f a : ETm) (σ : ESubst) : substTy? (.ext Γ (substTy Γ Δ A σ)) (.ext Δ A) B (comp (.ext Γ (substTy Γ Δ A σ)) Γ Δ σ (wkn (.ext Γ (substTy Γ Δ A σ)) 1)) < substTm? Γ Δ (.app Δ A B f a) σ := sorry
+
+theorem wkn_1 (Γ : ECon) (n : Fin (Γ.len + 1)) (h : n < Γ.len) : wkn? Γ (n+1) < wkn? Γ n := by
+  simp_all only [wkn?, Fin.add_val_pull, wkn_size, wkn.size]
+  conv => rhs; rw [sum_begin]
+  omega
+theorem wkn_2 (Γ : ECon) (n : Fin (Γ.len + 1)) : (h : n < Γ.len) -> mkVar? Γ ⟨n, sorry⟩ < wkn? Γ n := sorry
+
+theorem mkVar_1 (Γ : ECon) (v : Fin Γ.len) : wkn? Γ (v.castAdd 1) < mkVar? (.ext Γ X) (ECon.len.eq_2 .. ▸ v.natAdd 1) := sorry
+theorem mkVar_2 (Γ : ECon) (v : Fin Γ.len) (h : v + 1 < ECon.len (ECon.ext Γ X)) :
+  (substTy?
+    Γ
+    (Γ.drop ⟨v+1, by rw [ECon.len] at h; linarith⟩)
+    (Γ.get ⟨v, by rw [ECon.len] at h; linarith⟩) -- `Γᵥ`
+    (wkn (.ext Γ X) ⟨v+1+1, by simp_all only [ECon.len, add_lt_add_iff_right]⟩) -- `wkn (Γ, X) (v+1+1)`
+  ) -- `Γᵥ[wkn (Γ, X) (v+1+1)]`
+  < mkVar? (.ext Γ X) (ECon.len.eq_2 .. ▸ v.natAdd 1)
+  := sorry
+theorem mkVar_3 (Γ : ECon) (v : Fin Γ.len)       : mkVar? Γ v < mkVar? (.ext Γ X) (ECon.len.eq_2 .. ▸ v.natAdd 1) := sorry
+
+-- not 100% on the rhs of `<` of these two:
+theorem comp_1 (δ σ : ESubst) : comp? Γ Θ Δ δ σ < comp? Γ Θ (.ext Δ A) (.cons Θ Δ A δ t) σ := by sorry
+theorem comp_2 (δ σ : ESubst) : substTm? Γ Θ t σ < comp? Γ Θ (.ext Δ A) (.cons Θ Δ A δ t) σ := sorry
+
+
+
+#exit
 
 mutual
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Γ <- Δ) : Ty Γ` -/
@@ -146,7 +208,7 @@ mutual
   /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
   def substTmE (Γ Δ : ECon) : ETm -> ESubst -> ETm
   | .var _ _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then .error.
-  | .app _Δ A B f a, σ => -- expected `Tm Γ B[id, a][σ]`
+  | .app _Δ A B f a, σ => -- `Δ ⊢ a : A`, `Δ ⊢ f : Pi A B`, expected `Tm Γ B[id, a][σ]`    (yes this `A` is the same as the `A` in `@substTm _ _ A ..`)
     let Aσ : ETy /- Γ -/ := substTyE Γ Δ A σ -- Γ ⊢ A[σ]
     -- let wk_σ : ESubst := wkE Γ Δ A' σ -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wk id)`
     let wk_σ : ESubst := comp (.ext Γ Aσ) Γ Δ σ (wkn (.ext Γ Aσ) 1) -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
@@ -219,8 +281,8 @@ def wkiE (Γ : ECon) (W : ETy) : ESubst := wkn (.ext Γ W) 1
 /-- `wk : {Γ Δ : Con} -> {W : Ty Γ} -> (Γ <- Δ) -> (Γ, W <- Δ)` -/
 def wkE (Γ Δ : ECon) (W : ETy) (σ : ESubst) : ESubst
   := comp (.ext Γ W) Γ Δ
-      (wkiE Γ W) -- `wki : Γ,W <- Γ`
       σ
+      (wkiE Γ W) -- `wki : Γ,W <- Γ`
 
 #eval idE .nil
 #eval idE (.ext .nil (.U .nil))
@@ -243,16 +305,6 @@ def wkpE (Γ Δ : ECon) (W : ETy) (σ : ESubst) : ESubst := sorry -- TODO this i
 -- # Everything below this line is VERY out of date!
 
 #exit
-
-/-- `Subst (Γ, A) Γ`. This is usually two functions chained together: `wk id`, but we only need this version. -/
-@[aesop unsafe]
-def ESubst.wk (Γe : ECon) : ESubst := ESubst.weaken (ESubst.id Γe)
-
-/-- `subst1 : Subst Γ (Γ, A) -/
-@[aesop unsafe]
-def ESubst.subst1 (Γe : ECon) (te : ETm) : ESubst := .cons (id Γe) te
-
--- #reduce ESubst.id (.ext (.ext .nil .U) .U)
 
 mutual
   @[aesop safe constructors unsafe cases]
