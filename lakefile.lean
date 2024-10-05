@@ -10,6 +10,7 @@ package «reflection» {
 -- require IIT from git "https://github.com/arthur-adjedj/iit" @ "v4.4.0"
 require Qq from git "https://github.com/leanprover-community/quote4" @ "53156671405fbbd5402ed17a79bd129b961bd8d6"
 require mathlib from git "https://github.com/leanprover-community/mathlib4" @ "v4.8.0"
+-- require auto from git "https://github.com/leanprover-community/lean-auto" @ "v4.11.0" -- doesn't work from lean 4.8
 
 @[default_target]
 lean_lib «Reflection» {
