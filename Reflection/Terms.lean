@@ -102,7 +102,7 @@ example : ∣ESubst.nil Γ∣ = 0 := ESubst.len.eq_1 Γ -- doesn't work by rfl :
   Example: `drop (Con.nil, A, B, C) 1 ≡ (Con.nil, A, B)`. -/
 @[aesop unsafe] def ECon.drop : (Γ : ECon) -> Fin (Γ.len + 1) -> ECon
 | .nil    , n => .nil
-| .ext Γ A, ⟨0  , h⟩ => Γ
+| .ext Γ A, ⟨0  , h⟩ => .ext Γ A
 | .ext Γ A, ⟨n+1, h⟩ => Γ.drop ⟨n, by rw [len] at h; linarith⟩
 notation Γ:70 " ─ " n:70 => ECon.drop Γ n
 
@@ -249,19 +249,26 @@ theorem comp_1 (δ σ : ESubst) : comp? Γ Θ Δ δ σ < comp? Γ Θ (.ext Δ A)
 theorem comp_2 (δ σ : ESubst) : substTm? Γ Θ t σ < comp? Γ Θ (.ext Δ A) (.cons Θ Δ A δ t) σ := sorry
 end DecreasingMeasure
 
+#check Fin.castSucc
+#check Fin.val_add_one_of_lt
+
+/-- If `n` is not the last element, we can add one without wrapping around. -/
+abbrev Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by omega⟩
+
 mutual
   /-- `wkn {Γ : Con} (n : Fin (Γ.len + 1)) : (Γ <- Γ - n)` -/
   def wknE (Γ : ECon) (n : Fin (Γ.len + 1)) : ESubst :=
     if h : Γ.len = n then .nil Γ
     else
+      have h : n < ∣Γ∣ := by omega
       ESubst.cons
         Γ
-        (Γ.drop ⟨n.val + 1, by omega⟩)
-        (Γ.get ⟨n.val, by omega⟩) -- Γₙ
-        (wknE Γ ⟨n.val + 1, by omega⟩) -- `wkn Γ (n+1) : Γ <- Γ - (n+1)`
+        (Γ.drop (n.addOne h))
+        (Γ.get ⟨n.val, h⟩) -- Γₙ
+        (wknE Γ (n.addOne h)) -- `wkn Γ (n+1) : Γ <- Γ - (n+1)`
         (.var Γ
           -- (substTyE Γ (Γ.drop (n+1)) (Γ.get ⟨n, by simp only [h]⟩) (wkn Γ ⟨n+1, by linarith⟩)) -- `Γᵥ[wki]`
-          (mkVarE Γ ⟨n.val, by omega⟩)
+          (mkVarE Γ ⟨n.val, h⟩)
         )
   termination_by Γ.len - n
 
@@ -399,34 +406,34 @@ mutual
   @[aesop safe constructors unsafe cases]
   unsafe inductive ConW : ECon -> Prop
   | nil : ConW .nil
-  | ext : (Γw : ConW Γe) -> (Aw : TyW Γe Ae) -> ConW (.ext Γe Ae)
+  | ext : (Γw : ConW Γ) -> (Aw : TyW Γ A) -> ConW (.ext Γ A)
 
   @[aesop safe constructors unsafe cases]
   unsafe inductive TyW : ECon -> ETy -> Prop
-  | U : ConW Γe -> TyW Γe (.U Γe)
-  | El : ConW Γe -> TmW Γe (.U Γe) te -> TyW Γe (.El Γe te)
-  | Pi : ConW Γe -> TyW Γe Ae -> TyW (.ext Γe Ae) Be -> TyW Γe (.Pi Γe Ae Be)
+  | U : ConW Γ -> TyW Γ (.U Γ)
+  | El : ConW Γ -> TmW Γ (.U Γ) t -> TyW Γ (.El Γ t)
+  | Pi : ConW Γ -> TyW Γ A -> TyW (.ext Γ A) B -> TyW Γ (.Pi Γ A B)
   /-- A mutual inductive type which may refer to existing types in Γ, and has type A. -/
   -- | mind : MInd /- Γ -/ A -> Ty Γ
 
   @[aesop safe constructors unsafe cases]
   unsafe inductive VarW : ECon -> ETy -> EVar -> Prop
   /-`vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]` -/
-  | vz : ConW Γe -> TyW Γe Ae -> VarW (.ext Γe Ae) (substTyE (.ext Γe Ae) Γe Ae (wkiE Γe Ae)) (.vz Γe Ae)
+  | vz : ConW Γ -> TyW Γ A -> VarW (.ext Γ A) (substTyE (.ext Γ A) Γ A (wkiE Γ A)) (.vz Γ A)
   /- `vs {Γ} ~~{A : Ty Γ}~~ {B : Ty Γ} : Var Γ A -> Var (Γ, B) A[wki]` -/
-  | vs : ConW Γe -> TyW Γe Ae -> TyW Γe Be -> VarW Γe Ae ve
-    -> VarW (.ext Γe Be) (substTyE (.ext Γe Be) Γe Ae (wkiE Γe Be)) (.vs Γe /- Ae -/ Be ve)
+  | vs : ConW Γ -> TyW Γ A -> TyW Γ B -> VarW Γ A v
+    -> VarW (.ext Γ B) (substTyE (.ext Γ B) Γ A (wkiE Γ B)) (.vs Γ /- ~~A~~ -/ B v)
 
   @[aesop safe constructors unsafe cases]
   unsafe inductive TmW : ECon -> ETy -> ETm -> Prop
   /- var {Γ} ~~{A : Ty Γ}~~ : Var Γ A -> Tm Γ A -/
-  | var : ConW Γe -> TyW Γe Ae -> VarW Γe Ae ve -> TmW Γe Ae (.var Γe /- Ae -/ ve)
+  | var : ConW Γ -> /- ~~ TyW Γ A -> ~~-/ VarW Γ A v -> TmW Γ A (.var Γ /- ~~A~~ -/ v)
   /- `app {Γ : Con} {A : Ty Γ} {B : Ty (Γ, A)} : (f : Tm Γ (Pi A B)) -> (a : Tm Γ A) -> Tm Γ B[id, a]`
     Here, `(id Γ, a)` is `Γ <- Γ, A`. -/
-  | app : ConW Γe -> TyW Γe Ae -> TyW (.ext Γe Ae) Be ->
-    TmW Γe (.Pi Γe Ae Be) fe ->
-    TmW Γe Ae ae ->
-    TmW Γe (substTyE Γe (.ext Γe Ae) Be (.cons Γe (.ext Γe Ae) Ae (idE Γe) ae)) (.app Γe Ae Be fe ae)
+  | app : ConW Γ -> TyW Γ A -> TyW (.ext Γ A) B ->
+    TmW Γ (.Pi Γ A B) f ->
+    TmW Γ A a ->
+    TmW Γ (substTyE Γ (.ext Γ A) B (.cons Γ (.ext Γ A) A (idE Γ) a)) (.app Γ A B f a)
   -- | lam : {Aw : TyW Γe Ae} ->
   --         {Bw : TyW (.ext Γe Ae) Be} ->
   --         (bodyw : TmW (.ext Γe Ae) Be bodye) ->
@@ -434,20 +441,29 @@ mutual
 
   @[aesop safe constructors unsafe cases]
   unsafe inductive SubstW : ECon -> ECon -> ESubst -> Prop
-  | nil : ConW Γe -> SubstW Γe .nil (.nil Γe)
+  | nil : ConW Γ -> SubstW Γ .nil (.nil Γ)
   /- Subst.cons {Γ} {Δ} {A : Ty Δ} : (δ : Γ <- Δ) -> (t : Tm Γ A[δ]) -> (Γ <- (Δ, A)) -/
-  | cons : ConW Γe -> ConW Δe -> TyW Δe Ae ->
-      SubstW Γe Δe δe ->
-      TmW Γe (substTyE Γe Δe Ae δe) te ->
-      SubstW Γe (.ext Δe Ae) (.cons Γe Δe Ae δe te)
+  | cons : ConW Γ -> ConW Δ -> TyW Δ A ->
+      SubstW Γ Δ δ ->
+      TmW Γ (substTyE Γ Δ A δ) t ->
+      SubstW Γ (.ext Δ A) (.cons Γ Δ A δ t)
 end
 
 @[simp] theorem Γ_len0_nil {Γ : ECon} {n : Fin (Γ.len + 1)} (h : Γ.len = 0) : Γ = .nil :=
   match Γ with
   | .nil => rfl
-  | .ext Γ A => by rw [ECon.len] at h; aesop
+  | .ext Γ A => by rw [ECon.len] at h; rename_i Γ_1; simp_all only [add_eq_zero, one_ne_zero, false_and]
 
-@[simp] theorem drop_0 {Γ : ECon} : Γ ─ 0 = Γ := by sorry
+@[simp] theorem drop_0' : {Γ : ECon} -> {h : 0 < ∣Γ∣ + 1} -> Γ ─ ⟨0, h⟩ = Γ
+| .nil    , _ => rfl
+| .ext Γ A, h => ECon.drop.eq_2 Γ A h
+
+@[simp] theorem drop_0 : {Γ : ECon} -> Γ ─ 0 = Γ := drop_0'
+
+@[simp] theorem drop_ext_1' : {Γ : ECon} -> {h : 1 < ∣Γ.ext A∣ + 1} -> .ext Γ A ─ ⟨1, h⟩ = Γ
+| .nil    , _ => by simp only [ECon.drop, Fin.zero_eta, Fin.isValue, drop_0]
+| .ext Γ A, h => by simp only [ECon.drop, Fin.zero_eta, drop_0]
+-- @[simp] theorem drop_ext_1 : {Γ : ECon} -> .ext Γ A ─ 1 = Γ := by aesop
 
 @[simp] theorem drop_all {Γ : ECon} {n : Fin (Γ.len + 1)} (h : Γ.len = n) : Γ ─ n = .nil :=
   match Γ, n with
@@ -456,64 +472,87 @@ end
     exact 0 -- this is so weird?
   | .ext Γ A, ⟨.succ n, hsn⟩ => by
     rw [ECon.drop]
-    exact @drop_all Γ ⟨n, by simp_all only [ECon.len, Nat.succ_eq_add_one]; rw [add_comm, h]; simp⟩ (by sorry)
+    exact @drop_all Γ ⟨n, by simp_all only [ECon.len, Nat.succ_eq_add_one]; rw [add_comm, h]; simp⟩
+      (by -- ugly proof
+        simp_all only
+        simp_all only [Nat.succ_eq_add_one, lt_add_iff_pos_right, zero_lt_one]
+        rw [ECon.len.eq_2] at h
+        omega)
 
 @[simp] theorem wknE_all {Γ : ECon} {n : Fin (Γ.len + 1)} (h : Γ.len = n) : wknE Γ n = .nil Γ := by
   rw [wknE]
   simp only [dite_eq_left_iff, imp_false, Decidable.not_not]
   exact h
 
-unsafe def dropW (Γw : ConW Γ) (n) : ConW (Γ ─ n) := sorry
+@[aesop safe] unsafe def dropW : (Γw : ConW Γ) -> (n : Fin (∣Γ∣+1)) -> ConW (Γ ─ n)
+| ConW.nil    , n => .nil
+| Γw, ⟨0  , h⟩ => by rw [drop_0']; exact Γw
+| @ConW.ext Γ A Γw Aw, ⟨n+1, h⟩ => by
+  rw [ECon.drop]
+  exact dropW Γw ⟨n, by rw [ECon.len] at h; omega⟩
 
-#check ECon.get
-#check Fin.castSucc
-#check Fin.val_add_one_of_lt
-/-- If `n` is not the last element, we can add one without wrapping around. -/
-def Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by omega⟩
-unsafe def getW {Γe : ECon} (Γw : ConW Γe) (v : Fin Γe.len) : TyW (Γe ─ v.succ) (Γe.get v) := sorry
+@[aesop safe] unsafe def getW {Γ : ECon} : (Γw : ConW Γ) -> (v : Fin Γ.len) -> TyW (Γ ─ v.succ) (Γ.get v)
+| .nil    , v => Fin.elim0 v
+| @ConW.ext Γ A Γw Aw, ⟨0  , h⟩ => by simp only [Fin.succ_mk, Nat.succ_eq_add_one, zero_add, ECon.drop, drop_0', ECon.get]; exact Aw
+| @ConW.ext Γ A Γw Aw, ⟨v+1, h⟩ => by simp [ECon.drop, ECon.get]; exact getW Γw ⟨v, by rw [ECon.len] at h; omega⟩
 
--- set_option pp.notation false
--- set_option pp.coercions false
+/-- `(Γ - (v+1), Γᵥ) = Γ - v` -/
+@[simp]
+theorem con_ext_get' (Γ : ECon) (v : Fin Γ.len) (h1 : ↑v + 1 < ∣Γ∣ + 1) (h2 : ↑v < ∣Γ∣) (h' : ↑v < ∣Γ∣ + 1)
+  : .ext (Γ ─ ⟨v+1, h1⟩) (Γ.get ⟨v, h2⟩) = Γ ─ ⟨v, h'⟩
+  := by
+  match Γ, v with
+  | .nil    , n => exact Fin.elim0 n
+  | .ext Γ A, ⟨0  , h⟩ => simp only [zero_add, drop_ext_1', ECon.get, Fin.zero_eta, drop_0]
+  | .ext Γ A, ⟨v+1, h⟩ =>
+    have ih := con_ext_get' Γ ⟨v, by rw [ECon.len] at h; omega⟩ (by omega) (by omega) (by omega)
+    simp only [ECon.drop, ECon.get, ih]
+
+-- theorem con_ext_get (Γ : ECon) (v : Fin Γ.len) : .ext (Γ ─ v.succ) (Γ.get v) = Γ ─ v.castSucc := by sorry -- con_ext_get'
+
 mutual
   /-- `wkn {Γ : Con} (n : Fin (Γ.len + 1)) : (Γ <- Γ - n)` -/
-  unsafe def wknW (Γw : ConW Γe) (n : Fin (Γe.len + 1)) : SubstW Γe (Γe ─ n) (wknE Γe n) := by
+  unsafe def wknW (Γw : ConW Γ) (n : Fin (Γ.len + 1)) : SubstW Γ (Γ ─ n) (wknE Γ n) := by
     -- SubstW.nil {Γe : ECon} : ConW Γe → SubstW ECon.nil Γe (ESubst.nil Γe)
-    if h : Γe.len = n then
+    if h : Γ.len = n then
       rw [wknE_all h, drop_all h]
-      exact @SubstW.nil Γe Γw
+      exact @SubstW.nil Γ Γw
     else
-      have hn1 : n.val + 1 < ∣Γe∣ + 1 := by omega
-      have hn0 : n.val     < ∣Γe∣     := by omega
-
-      -- Subst.cons {Γ} {Δ} {A : Ty Δ} : (δ : Γ <- Δ) -> (t : Tm Γ A[δ]) -> (Γ <- (Δ, A))
-      have := @SubstW.cons
-        Γe -- Γ := ...
-        (Γe.drop (n.addOne (Nat.succ_lt_succ hn1))) -- Δ := ...
-        (Γe.get ⟨n.val, hn0⟩) -- A := Γₙ
-        (wknE Γe ⟨n.val + 1, hn1⟩) -- δ := `wkn Γ (n+1) : Γ <- Γ - (n+1)`
-        (.var Γe
-          -- (substTyE Γ (Γ.drop (n+1)) (Γ.get ⟨n, by simp only [h]⟩) (wkn Γ ⟨n+1, by linarith⟩)) -- `Γᵥ[wki]`
-          (mkVarE Γe ⟨n.val, hn0⟩)
-        )
+      have h : n.val < ∣Γ∣ := by omega
+      -- reminder: `Subst.cons {Γ} {Δ} {A : Ty Δ} : (δ : Γ <- Δ) -> (t : Tm Γ A[δ]) -> (Γ <- (Δ, A))`
+      have := SubstW.cons
         Γw  -- Γ := Γ
-        (dropW Γw ⟨n.val + 1, hn1⟩) -- Δ := Γ ─ n
-        (getW Γw ⟨n.val, hn0⟩) -- A := Γₙ
-        -- `Subst.cons Γ (Γ ─ n) Γₙ : (δ : Γ <- (Γ ─ n)) -> (t : Tm Γ (Γₙ)[δ]) -> (Γ <- (Γ ─ n, Γₙ))`
-        (wknW Γw ⟨n.val + 1, hn1⟩)
+        (dropW Γw (n.addOne h)) -- Δ := Γ ─ (n+1)
+        (getW Γw ⟨n.val, h⟩) -- A := Γₙ
+        -- `Subst.cons Γ (Γ ─ (n+1)) Γₙ : (δ : Γ <- (Γ ─ (n+1))) -> (t : Tm Γ Γₙ[δ]) -> (Γ <- (Γ ─ (n+1), Γₙ))`
+        (wknW Γw (n.addOne h))
+        -- `Subst.cons Γ (Γ ─ (n+1)) Γₙ (wkn Γ (n+1)) : (t : Tm Γ Γₙ[wkn Γ (n+1)]) -> (Γ <- (Γ ─ (n+1), Γₙ))`
         (.var
           Γw
-          (mkVarW Γw ⟨n.val, hn0⟩)
+          (mkVarW Γw ⟨n.val, h⟩)
         )
-        -- (.cons ..)
+      simp [ECon.drop, Fin.addOne] at this
+      let v : Fin Γ.len := ⟨n, by omega⟩ -- maybe adapting `con_ext_get'` makes more sense than introducing this v
+      have rw := con_ext_get' Γ v (by omega) (by omega) (by omega)
+      -- have n_is_v : n.val = v.val := by simp_all only [Fin.eta]
+      -- rw [n_is_v] at h
+      rw [rw] at this
+      clear rw
+      rw [wknE]
+      simp [reduceDite] -- why doesn't it simp away the `if` :(
+      -- this almost works, just a bit of fiddling around with Fin
       exact this
 
   -- `mkVar : (Γ : Con) -> (v : Fin Γ.len) -> Var Γ Γₙ[wkn Γ (v+1)]`
-  unsafe def mkVarW : (Γw : ConW Γe) -> (v : Fin Γe.len) ->
-    VarW Γe (substTyE Γe (Γe ─ ⟨v.val, by omega⟩) (Γe.get ⟨v.val, by omega⟩) (wknE Γe v.succ)) (mkVarE Γe v)
+  unsafe def mkVarW : (Γw : ConW Γ) -> (v : Fin Γ.len) ->
+    VarW Γ (substTyE Γ (Γ ─ ⟨v.val + 1, by omega⟩) (Γ.get ⟨v.val, by omega⟩) (wknE Γ v.succ)) (mkVarE Γ v)
   | .nil, v => Fin.elim0 v
   | @ConW.ext Γe Xe Γw Xw, ⟨0  , h⟩ => by -- expected `Var (Γ, X) (get (Γ, X) 0)[wkn (Γ, X) (0 + 1)]`
     -- by defeq we have `get (Γ, X) 0 ≡ X`
-    simp only [Fin.zero_eta, drop_0, zero_add]
+    rw [wknE]
+    rw [mkVarE]
+    simp
+
     exact .vz Γw Xw -- `: Var (Γ, X) X[wki]`, where `wki` is just a shorthand for `wkn (Γ, X) 1`.
   | .ext Γ X, ⟨v+1, h⟩ => -- expected `Var (Γ, X) (get (Γ, X) (v+1))[wkn (Γ, X) (v + 1 + 1)]`
     -- ! need theorem get_ext : get (Γ, X) (v+1) = get Γ v
