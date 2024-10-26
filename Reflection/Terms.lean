@@ -3,16 +3,20 @@ import Reflection.Util.Vec
 import Reflection.Util.Sum
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Ring
+import Mathlib.Data.Fin.Basic
 
 set_option linter.unusedVariables false
 -- set_option pp.fieldNotation.generalized false
 
+
+@[aesop unsafe]
+theorem Fin.ext' : @Eq (Fin (n+1)) ⟨1,h⟩ 1 := by ext; simp [Nat.mod_eq_of_lt h]
+
 -- move to own util file later:
-@[aesop unsafe, simp] theorem Fin.add_val_pull {n : Fin (N + 1)} : n < N -> @Fin.val (N + 1) (n + 1) = (@Fin.val (N + 1) n) + 1 := by
-  intro h
-  rw [Fin.val_add_one_of_lt]
-  simp only [Nat.succ_eq_add_one, implies_true]
-  exact h
+@[aesop unsafe, simp]
+theorem Fin.add_val_pull {n : Fin (N + 1)} (h : n < N) : @Fin.val (N + 1) (n + 1) = (@Fin.val (N + 1) n) + 1 := by
+  simp_all only [Fin.val_add_one_of_lt, natCast_eq_last, Nat.succ_eq_add_one]
+
 
 mutual
   @[aesop unsafe]
@@ -100,11 +104,15 @@ example : ∣SubstE.nil Γ∣ = 0 := SubstE.len.eq_1 Γ -- doesn't work by rfl :
 
 /-- Notation: `Γ ─ n`. Drop the last `n` variables in the context.
   Example: `drop (Con.nil, A, B, C) 1 ≡ (Con.nil, A, B)`. -/
-@[aesop unsafe] def ConE.drop : (Γ : ConE) -> Fin (Γ.len + 1) -> ConE
+@[aesop unsafe] abbrev ConE.drop : (Γ : ConE) -> Fin (Γ.len + 1) -> ConE
 | .nil    , n => .nil
 | .ext Γ A, ⟨0  , h⟩ => .ext Γ A
 | .ext Γ A, ⟨n+1, h⟩ => Γ.drop ⟨n, by rw [len] at h; linarith⟩
 notation Γ:70 " ─ " n:70 => ConE.drop Γ n
+
+-- TODO: make these work by rfl
+-- example : ConE.drop (.ext Γ A) 1 = Γ := rfl
+-- example : ConE.drop (.ext Γ A) ⟨1, by sorry⟩ = Γ := rfl
 
 /-- Notation: `Γᵥ`. Get the type of the de-Brujin variable `v`.
    `get : (Γ : Con) -> (v : Fin Γ.len) -> Ty (drop Γ (v+1))`. -/
@@ -131,14 +139,14 @@ notation Γ:70 " ─ " n:70 => ConE.drop Γ n
 #check Fin.val_add_one_of_lt
 
 /-- If `n` is not the last element, we can add one without wrapping around. -/
-abbrev Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by omega⟩
+abbrev Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by simp_all only [add_lt_add_iff_right]⟩
 
 mutual
   /-- `wkn {Γ : Con} (n : Fin (Γ.len + 1)) : (Γ <- Γ - n)` -/
   def wknE (Γ : ConE) (n : Fin (Γ.len + 1)) : SubstE :=
     if h : Γ.len = n then .nil Γ
     else
-      have h : n < ∣Γ∣ := by omega
+      have h : n.1 < ∣Γ∣ := by omega
       SubstE.cons
         Γ
         (Γ.drop (n.addOne h))
@@ -264,7 +272,7 @@ section Tests
 end Tests
 
 
-/-- `def idxA : Var Γ A -> Ty Γ := A`. RConEstruct the `A` in `Var Γ A`. -/
+/-- `def idxA : Var Γ A -> Ty Γ := A`. Reconstruct the `A` in `Var Γ A`. -/
 noncomputable unsafe def VarE.idxA : VarE -> TyE
 | .vz Γ A => A
 | .vs Γ B v => -- `.vs v : Var (Γ, B) A[wkn (Γ, B) 1]`, and `v : Var A Γ`, and ~~`Γ⊢A`~~, and `Γ,A⊢B`, expecting `Ty (Γ, B)`.
@@ -273,10 +281,10 @@ noncomputable unsafe def VarE.idxA : VarE -> TyE
   let A_wk := substTyE Γ (.ext Γ B) A (wknE (.ext Γ B) 1) -- `Γ, B ⊢ A[wkn (Γ, B) 1]`
   A_wk
 
--- /-- RConEstruct the `A` in `Tm Γ A`. -/
+-- /-- Reconstruct the `A` in `Tm Γ A`. -/
 -- noncomputable unsafe def TmE.idxA : TmE -> TyE
 -- | .var Γ v => v.idxA
--- | .app Γ A B f a => A -- this is the one spot where we *need* to store `A`. Intuitively, `.app` is modus ponens, so similar to cuts in sequent calculus. We can't do cut elimination in Lean afaik, so we are unable to rConEstruct `A` here.
+-- | .app Γ A B f a => A -- this is the one spot where we *need* to store `A`. Intuitively, `.app` is modus ponens, so similar to cuts in sequent calculus. We can't do cut elimination in Lean afaik, so we are unable to Reconstruct `A` here.
 -- | .lam .. => sorry
 -- | .error .. => sorry
 
@@ -410,7 +418,7 @@ theorem con_ext_get' (Γ : ConE) (v : Fin Γ.len) (h1 : ↑v + 1 < ∣Γ∣ + 1)
 -- ! need theorem : wkn Γ (v+1) ∘ wkn (Γ, X) 1 = wkn (Γ, X) (v+1+1)
 
 -- set_option pp.proofs true in
--- set_option pp.explicit true in
+set_option pp.explicit true in
 mutual
   /-- `wkn {Γ : Con} (n : Fin (Γ.len + 1)) : (Γ <- Γ - n)` -/
   unsafe def wknW (Γw : ConW Γ) (n : Fin (Γ.len + 1)) : SubstW Γ (Γ ─ n) (wknE Γ n) := by
@@ -454,7 +462,8 @@ mutual
     -- have rw := @Fin.eta (∣Γ.ext X∣ + 1) 1 (by omega)
     have h : 1 < ∣Γ.ext X∣ + 1 := by omega
     have : ⟨1, h⟩ = (1 : Fin (∣Γ.ext X∣ + 1)) := by
-      sorry -- how is this hard lmao
+      ext
+      simp [Nat.mod_eq_of_lt h]
       done
     simp_all only [Nat.succ_eq_add_one]
   | @ConW.ext Γ X Γw Xw, ⟨v+1, h⟩ => by -- expected `Var (Γ, X) (get (Γ, X) (v+1))[wkn (Γ, X) (v + 1 + 1)]`
@@ -511,15 +520,30 @@ unsafe def mkVar {Γ : Con} (v : Fin Γ.len) : Var Γ (substTy (Γ.get v) (wkn v
 
 unsafe def Con.nil : Con                                                                            := ⟨.nil, .nil⟩
 unsafe def Con.ext (Γ : Con) (A : Ty Γ) : Con                                                       := ⟨.ext Γ.fst A.fst, .ext Γ.snd A.snd⟩
+
+unsafe def Con.ext_pull (Γ : Con) (A : Ty Γ) : (Γ.fst.ext A.fst) = (Γ.ext A).fst := rfl
+unsafe def drop_ext_1 (Γ : Con) (W : Ty Γ) : (Γ.ext W).drop 1 = Γ := by sorry -- this doesn't work by rfl :( ?
+
+#check ConE.drop
+
+/-- Weakened identity substitution. `wki : {Γ : Con} -> {W : Ty Γ} -> (Γ, W <- Γ)`. Just a shorthand for `wkn (Γ, W) 1`. -/
+unsafe def wki {Γ : Con} {W : Ty Γ} : Subst (Γ.ext W) Γ := drop_ext_1 Γ W ▸ wkn (Γ := Γ.ext W) 1
+/- `wk : {Γ Δ : Con} -> {W : Ty Γ} -> (Γ <- Δ) -> (Γ, W <- Δ)` -/
+#check wkpE
+/-- Parellel weakening `wkp {Γ Δ} {A : Ty Δ} (σ : Γ <- Δ) : (Γ, A[σ]) <- (Δ, A)`. This is the `δ` used in substTyE and substTmE. -/
+
 unsafe def Ty.U : Ty Γ                                                                              := ⟨.U Γ.1, .U Γ.2⟩
 unsafe def Ty.El (t : Tm Γ .U) : Ty Γ                                                               := ⟨.El Γ.1 t.fst, .El Γ.2 t.snd⟩
 unsafe def Ty.Pi (A : Ty Γ) (B : Ty (.ext Γ A)) : Ty Γ                                              := ⟨.Pi Γ.1 A.fst B.fst, .Pi Γ.2 A.snd B.snd⟩
 
--- TODO: rest of the constructors (easy)
--- /-- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]`, note that `wki : (Γ, A) <- Γ`, and `@wki Γ A = wkn (Γ, A) 1`, and `wki = wk id`. -/
--- unsafe def Var.vz : Var (Con.ext Γ A) (substTy A wk) := ⟨.vz Γ.1 A.1, .vz Γ.2 A.2⟩
+
+/-- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wkn (Γ, A) 1]`. -/
+unsafe def Var.vz : Var (Con.ext Γ A) (substTy A wk) := ⟨.vz Γ.1 A.1, .vz Γ.2 A.2⟩
 -- /-- `vs {Γ} ~~{A : Ty Γ}~~ {B : Ty Γ} : Var Γ A -> Var (Γ, B) A[wki]`, but note that `wki` is a shorthand for `wkn (Γ, B) 1 : (Γ, B) <- Γ` -/
 -- unsafe def Var.vs (v : Var Γ A) : Var (Con.ext Γ B) (substTy A wk) := ⟨.vs v.fst, .vs v.snd⟩
+
+
+-- TODO: rest of the constructors (easy)
 -- unsafe def Subst.nil : Subst Γ Con.nil := ⟨.nil, .nil⟩
 -- unsafe def Subst.cons (δ : Subst Γ Δ) (t : Tm Γ (substTy A δ)) : Subst Γ (Con.ext Δ A) := ⟨.cons δ.fst t.fst, .cons δ.snd t.snd⟩
 -- unsafe def Tm.app {A : Ty Γ} {B : Ty (Con.ext Γ A)} (f : Tm Γ (Ty.Pi A B)) (a : Tm Γ A) : Tm Γ (substTy B (subst1 a)) -- Tm Γ B[Var.vz ↦ a]
