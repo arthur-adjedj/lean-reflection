@@ -421,11 +421,13 @@ reduces to
 × PUnit
 ``` -/
 @[aesop safe]
-def ConₛS.{u, v} : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA.{u, v} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> Type (max u v)
+abbrev ConₛS.{u, v} : (Γₛ : Conₛ.{u}) -> (γₛ : ConₛA.{u, v} Γₛ) -> ConₛD.{u, v} Γₛ γₛ -> Type (max u v)
 | ⬝, ⟨⟩, ⟨⟩ => PUnit
 | Γₛ ▹ Aₛ, ⟨γₛ, αₛ⟩, ⟨γₛd, αₛd⟩ => ConₛS Γₛ γₛ γₛd × TyₛS Aₛ αₛ αₛd
+termination_by structural Γₛ => Γₛ
 
-example {A R} : ConₛS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, fun _n _v => R⟩ = (Unit × ((n : Nat) -> (v : Vec A n) -> R)) := rfl
+set_option pp.all true in
+example {A R : Type 0} : ConₛS.{0} Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, fun _n _v => R⟩ = (PUnit.{1} × ((n : Nat) -> (v : Vec A n) -> R)) := rfl
 
 set_option linter.unusedVariables false in
 @[aesop safe]
@@ -453,15 +455,16 @@ def TyₚS : (A : Tyₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (α : TyₚA A �
 def ConₚS : (Γ : Conₚ Γₛ) -> ConₛS Γₛ γₛ γₛD -> (γ : ConₚA Γ γₛ) -> ConₚD Γ γₛD γ -> Prop
 | ⬝    ,   _,     ⟨⟩,       ⟨⟩ => True
 | Γ ▹ A, γₛS, ⟨γ, α⟩, ⟨γD, αD⟩ => ConₚS Γ γₛS γ γD ∧ TyₚS A γₛS α αD
+termination_by structural Γₛ => Γₛ
 
 /-- Computation rules for Vec. This computes the *statement*, but doesn't *prove* it yet. -/
-example : @ConₚS Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, vecD⟩ (Vₚ A) ⟨⟨⟩, vecS⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩ ⟨⟨⟨⟩, nilD⟩, consD⟩
+example : @ConₚS.{0,0} Vₛ ⟨⟨⟩, Vec A⟩ ⟨⟨⟩, vecD⟩ (Vₚ A) ⟨⟨⟩, vecS⟩ ⟨⟨⟨⟩, Vec.nil⟩, Vec.cons⟩ ⟨⟨⟨⟩, nilD⟩, consD⟩
   = ((
       True
     ∧ (vecS 0 Vec.nil = nilD))
     ∧ ((n : Nat) -> (a : A) -> (v : Vec A n) -> (vecS (n + 1) (Vec.cons n a v) = consD n a (vecS n v)))
   )
-  := rfl
+  := by simp [ConₚS]; rfl -- TODO: make this `by rfl`
 
 -- https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/rw.20term.20depended.20on.20by.20other.20argument/near/409268800
 @[aesop unsafe]
