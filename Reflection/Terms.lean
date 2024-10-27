@@ -442,8 +442,6 @@ theorem con_ext_get' (Γ : ConE) (v : Fin Γ.len) (h1 : ↑v + 1 < ∣Γ∣ + 1)
 
   sorry
 
-#exit
-
 -- set_option pp.proofs true in
 set_option pp.explicit true in
 mutual
