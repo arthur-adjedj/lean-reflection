@@ -210,34 +210,34 @@ def wkiE (Γ : ConE) (W : TyE) : SubstE := wknE (.ext Γ W) ⟨1, by rw [ConE.le
 
 mutual
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Γ <- Δ) : Ty Γ` -/
-  def substTyE (Γ Δ : ConE) : TyE -> SubstE -> TyE
+  def substTyE (Γ : ConE) : TyE -> SubstE -> TyE
   | .U Δ, σ => .U Γ
-  | .El Δ t, σ => .El Γ (substTmE Γ Δ t σ)
+  | .El Δ t, σ => .El Γ (substTmE Γ t σ)
   | .Pi Δ A B, σ => -- Δ ⊢ A
-    let Aσ : TyE /- Γ -/ := substTyE Γ Δ A σ -- `Γ ⊢ A[σ]`
+    let Aσ : TyE /- Γ -/ := substTyE Γ A σ -- `Γ ⊢ A[σ]`
     have WRONG : sizeOf σ < 1 + sizeOf Δ + sizeOf A + sizeOf B := sorry
-    let wk_σ /- : (Γ, A[σ]) <- Δ -/ := compE (.ext Γ Aσ) Γ Δ σ (wknE (.ext Γ Aσ) 1) -- note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
+    let wk_σ /- : (Γ, A[σ]) <- Δ -/ := compE (.ext Γ Aσ) σ (wknE (.ext Γ Aσ) 1) -- note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
     -- let A_wk_σ : TyE := substTyE (.ext Γ Aσ) Δ A wk_σ -- `(Γ, A[σ]) ⊢ A[wk σ]`
     let vz : TmE /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ Aσ) (.vz Γ Aσ) -- `.vz Γ A' : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = σ ∘ (wk id)`
     let δ : SubstE /- (Γ, A[σ]) <- (Δ, A) -/ := .cons (.ext Γ Aσ) Δ A (wk_σ) vz
-    .Pi Γ Aσ (substTyE (.ext Γ Aσ) (.ext Δ A) B δ)
+    .Pi Γ Aσ (substTyE (.ext Γ Aσ) B δ)
   termination_by A σ => sizeOf A --sizeOf A + sizeOf σ
 
   /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
-  def substTmE (Γ Δ : ConE) : TmE -> SubstE -> TmE
+  def substTmE (Γ : ConE) : TmE -> SubstE -> TmE
   | .var _ v, σ => substVarE v σ -- just pick the term in the subst that v refers to. if ill-formed, then .error.
-  | .app _Δ A B f a, σ => -- `Δ ⊢ a : A`, `Δ ⊢ f : Pi A B`, expected `Tm Γ B[id, a][σ]`    (yes this `A` is the same as the `A` in `@substTm _ _ A ..`)
-    let Aσ : TyE /- Γ -/ := substTyE Γ Δ A σ -- Γ ⊢ A[σ]
+  | .app Δ A B f a, σ => -- `Δ ⊢ a : A`, `Δ ⊢ f : Pi A B`, expected `Tm Γ B[id, a][σ]`    (yes this `A` is the same as the `A` in `@substTm _ _ A ..`)
+    let Aσ : TyE /- Γ -/ := substTyE Γ A σ -- Γ ⊢ A[σ]
     -- let wk_σ : SubstE := wkE Γ Δ A' σ -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wk id)`
-    have WRONG : sizeOf σ < 1 + sizeOf _Δ + sizeOf A + sizeOf B + sizeOf f + sizeOf a := sorry
-    let wk_σ : SubstE := compE (.ext Γ Aσ) Γ Δ σ (wknE (.ext Γ Aσ) 1) -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
+    have WRONG : sizeOf σ < 1 + sizeOf Δ + sizeOf A + sizeOf B + sizeOf f + sizeOf a := sorry
+    let wk_σ : SubstE := compE (.ext Γ Aσ) σ (wknE (.ext Γ Aσ) 1) -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
     -- let A_wk_σ : TyE /- (Γ, A[σ]) -/ := substTyE (.ext Γ Aσ) Δ A wk_σ -- A[wk σ]
     let vz : TmE /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ Aσ) (.vz Γ Aσ) -- `.vz Γ A[σ] : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = (wk id) ∘ σ`
     let δ : SubstE /- (Γ, A[σ]) <- (Δ, A) -/ := SubstE.cons (.ext Γ Aσ) Δ A (wk_σ) vz
 
-    let B' : TyE := substTyE (.ext Γ Aσ) (.ext Δ A) B δ
-    let f' : TmE := substTmE Γ Δ f σ -- `f[σ] : Tm Γ (Pi A B)[σ]`, where `(Pi A B)[σ] = Pi A[σ] B[wk σ, #0]` per definition of substTy
-    let a' : TmE := substTmE Γ Δ a σ -- `a[σ] : Tm Γ A[σ]`
+    let B' : TyE := substTyE (.ext Γ Aσ) B δ
+    let f' : TmE := substTmE Γ f σ -- `f[σ] : Tm Γ (Pi A B)[σ]`, where `(Pi A B)[σ] = Pi A[σ] B[wk σ, #0]` per definition of substTy
+    let a' : TmE := substTmE Γ a σ -- `a[σ] : Tm Γ A[σ]`
     let fa' : TmE := .app Γ Aσ B' f' a' -- `.app f[σ] a[σ] : Tm Γ B[wk σ, #0][id, a]`
     fa' -- ! here we need `((wk σ), #0) ∘ (id, a) = (id, a) ∘ σ` to typecheck.
   | .lam Δ A B body, σ => .error
@@ -245,23 +245,23 @@ mutual
   termination_by t σ => sizeOf t -- sizeOf t + sizeOf σ
 
   /-- `comp {Γ Θ Δ : Con} : Subst Θ Δ -> Subst Γ Θ -> Subst Γ Δ` -/
-  def compE (Γ Θ Δ : ConE) : SubstE -> SubstE -> SubstE
+  def compE (Γ : ConE) : SubstE -> SubstE -> SubstE
   | .nil Θ         , σ => .nil Γ
   | .cons Θ Δ A δ t, σ => -- `δ : Θ <- Δ`,   `σ : Γ <- Θ`,   `Θ ⊢ t : A[δ]`,   expected `Γ <- Δ, A`
     .cons Γ Δ A
-      (compE Γ Θ Δ δ σ) -- δ ∘ σ : Γ <- Δ
-      (substTmE Γ Θ t σ) -- `Γ ⊢ t[σ] : A[δ][σ]`, -- ! need theorem `A[δ][σ] = A[δ ∘ σ]`
+      (compE Γ δ σ) -- δ ∘ σ : Γ <- Δ
+      (substTmE Γ t σ) -- `Γ ⊢ t[σ] : A[δ][σ]`, -- ! need theorem `A[δ][σ] = A[δ ∘ σ]`
   termination_by δ σ => sizeOf δ -- sizeOf δ + sizeOf σ
 end
 
 /-- `wk : {Γ Δ : Con} -> {W : Ty Γ} -> (Γ <- Δ) -> (Γ, W <- Δ)` -/
 def wkE (Γ Δ : ConE) (W : TyE) (σ : SubstE) : SubstE
-  := compE (.ext Γ W) Γ Δ σ (wkiE Γ W) -- `wki : Γ,W <- Γ`
+  := compE (.ext Γ W) σ (wkiE Γ W) -- `wki : Γ,W <- Γ`
 
 /-- Parellel weakening `wkp {Γ Δ} {A : Ty Δ} (σ : Γ <- Δ) : (Γ, A[σ]) <- (Δ, A)`. This is the `δ` used in substTyE and substTmE. -/
 def wkpE (Γ Δ : ConE) (A : TyE) (σ : SubstE) : SubstE :=
-  let Aσ : TyE /- Γ -/ := substTyE Γ Δ A σ -- `Γ ⊢ A[σ]`
-  let wk_σ : SubstE := compE (.ext Γ Aσ) Γ Δ σ (wknE (.ext Γ Aσ) 1) -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
+  let Aσ : TyE /- Γ -/ := substTyE Γ A σ -- `Γ ⊢ A[σ]`
+  let wk_σ : SubstE := compE (.ext Γ Aσ) σ (wknE (.ext Γ Aσ) 1) -- `wk σ : (Γ, A[σ]) <- Δ`, note that `wk σ = σ ∘ (wkn (Γ, A[σ]) 1)`
   let vz : TmE /- (Γ, A[σ]) A[wk σ] -/ := .var (.ext Γ Aσ) (.vz Γ Aσ) -- `.vz Γ A[σ] : Var (Γ, A[σ]) A[σ][wk id]`, note that `wk σ = (wk id) ∘ σ`
   let δ : SubstE /- (Γ, A[σ]) <- (Δ, A) -/ := SubstE.cons (.ext Γ Aσ) Δ A wk_σ vz
   .cons (.ext Γ Aσ) Δ A wk_σ vz
@@ -356,7 +356,7 @@ noncomputable def VarE.idxA : VarE -> TyE
 | .vs Γ B v => -- `.vs v : Var (Γ, B) A[wkn (Γ, B) 1]`, and `v : Var A Γ`, and ~~`Γ⊢A`~~, and `Γ,A⊢B`, expecting `Ty (Γ, B)`.
   let A := v.idxA -- `Γ ⊢ A`
   -- let A_wk := A[wkn (.ext Γ B) 1] Γ (.ext Γ B)  -- `Γ, B ⊢ A[wkn (Γ, B) 1]`
-  let A_wk := substTyE Γ (.ext Γ B) A (wknE (.ext Γ B) 1) -- `Γ, B ⊢ A[wkn (Γ, B) 1]`
+  let A_wk := substTyE Γ A (wknE (.ext Γ B) 1) -- `Γ, B ⊢ A[wkn (Γ, B) 1]`
   A_wk
 
 -- /-- Reconstruct the `A` in `Tm Γ A`. -/
@@ -393,10 +393,10 @@ mutual
   @[aesop unsafe constructors cases]
   inductive VarW : ConE -> TyE -> VarE -> Prop
   /- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]` -/
-  | vz : ConW Γ -> TyW Γ A -> VarW (.ext Γ A) (substTyE (.ext Γ A) Γ A (wkiE Γ A)) (.vz Γ A)
+  | vz : ConW Γ -> TyW Γ A -> VarW (.ext Γ A) (substTyE (.ext Γ A) A (wkiE Γ A)) (.vz Γ A)
   /- `vs {Γ} ~~{A : Ty Γ}~~ {B : Ty Γ} : Var Γ A -> Var (Γ, B) A[wki]` -/
   | vs {Γ A B v} : ConW Γ -> /-~~ TyW Γ A -> ~~-/ TyW Γ B -> VarW Γ A v
-    -> VarW (.ext Γ B) (substTyE (.ext Γ B) Γ A (wkiE Γ B)) (.vs Γ /- ~~A~~ -/ B v)
+    -> VarW (.ext Γ B) (substTyE (.ext Γ B) A (wkiE Γ B)) (.vs Γ /- ~~A~~ -/ B v)
 
   @[aesop unsafe constructors cases]
   inductive TmW : ConE -> TyE -> TmE -> Prop
@@ -407,7 +407,7 @@ mutual
   | app : ConW Γ -> TyW Γ A -> TyW (.ext Γ A) B ->
     TmW Γ (.Pi Γ A B) f ->
     TmW Γ A a ->
-    TmW Γ (substTyE Γ (.ext Γ A) B (.cons Γ Γ A (idE Γ) a)) (.app Γ A B f a)
+    TmW Γ (substTyE Γ B (.cons Γ Γ A (idE Γ) a)) (.app Γ A B f a)
   -- | lam : {Aw : TyW Γe Ae} ->
   --         {Bw : TyW (.ext Γe Ae) Be} ->
   --         (bodyw : TmW (.ext Γe Ae) Be bodye) ->
@@ -419,7 +419,7 @@ mutual
   /- Subst.cons {Γ} {Δ} {A : Ty Δ} : (δ : Γ <- Δ) -> (t : Tm Γ A[δ]) -> (Γ <- (Δ, A)) -/
   | cons : ConW Γ -> ConW Δ -> TyW Δ A ->
       SubstW Γ Δ δ ->
-      TmW Γ (substTyE Γ Δ A δ) t ->
+      TmW Γ (substTyE Γ A δ) t ->
       SubstW Γ (.ext Δ A) (.cons Γ Δ A δ t)
 end
 
@@ -438,30 +438,44 @@ end
 #check compE
 #check substTyE
 
+#check wkpE
+
+-- /-- `wkp δ ∘ wkp σ = wkp (δ ∘ σ)` -/
+-- theorem compE_wkpE {Γ Θ Δ : ConE} : compE (Γ.ext (A[δ][σ])) (wkpE Θ Δ A δ) (wkpE (Θ.ext A[δ]) (Γ.ext A[δ]) σ) = wkpE (compE δ σ) := by
+--   sorry
+
 mutual
-  @[simp] theorem substTyE_comp (δ σ : SubstE) : substTyE Γ Θ (substTyE Θ Δ A δ) σ = substTyE Γ Δ A (compE Γ Θ Δ δ σ) := by
+  @[simp] theorem substTyE_comp (δ σ : SubstE) : substTyE Γ (substTyE Θ A δ) σ = substTyE Γ A (compE Γ δ σ) := by
     match A with
     | .U _Δ => rw [substTyE, substTyE, substTyE]
     | .El _Δ t => -- ⊢ substTyE Γ Θ (substTyE Θ Δ (TyE.El _Δ t) δ) σ = substTyE Γ Δ (TyE.El _Δ t) (compE Γ Θ Δ δ σ)
       rw [substTyE, substTyE, substTyE] -- ⊢ TyE.El Γ (substTmE Γ Θ (substTmE Θ _Δ t δ) σ) = TyE.El Γ (substTmE Γ _Δ t (compE Γ Θ Δ δ σ))
       rw [substTmE_comp]
-      -- ⊢   TyE.El Γ (substTmE Γ _Δ t (compE Γ Θ _Δ δ σ))
-      --   = TyE.El Γ (substTmE Γ _Δ t (compE Γ Θ Δ δ σ))       -- note that Δ is not quite _Δ
-      have : _Δ = Δ := sorry -- ! argh this might be impossible to show in the erased version...
-      rw [this]
     | .Pi _Δ A B =>
-      have ih_A : substTyE Γ Θ (substTyE Θ Δ A δ) σ = substTyE Γ Δ A (compE Γ Θ Δ δ σ) := substTyE_comp _ _
-      -- ! ih_B should not be provable, the indices are wrong
-      have ih_B : substTyE Γ Θ (substTyE Θ Δ B δ) σ = substTyE Γ Δ B (compE Γ Θ Δ δ σ) := substTyE_comp _ _
-      have : _Δ = Δ := sorry
+      have ih_A : substTyE Γ (substTyE Θ A δ) σ = substTyE Γ A (compE Γ δ σ) := substTyE_comp _ _
+      -- ! ih_B should not be provable, the indices are wrong -- or, actually it still may be true, but the domain of the erased version is simply larger, and it happens to also be true for ill-formed inputs /shrug.
+      -- Δ, A ⊢ B
+      --
+      have ih_B : substTyE Γ (substTyE Θ B δ) σ = substTyE Γ B (compE Γ δ σ) := substTyE_comp _ _
+      -- have : _Δ = Δ := sorry
+      -- cases this
       rw [substTyE, substTyE, substTyE]
-      sorry
+      congr 1
+      done
 
-  @[simp] theorem substTmE_comp (δ σ : SubstE) : substTmE Γ Θ (substTmE Θ Δ t δ) σ = substTmE Γ Δ t (compE Γ Θ Δ δ σ) := by
+  --   : @substTm Γ Θ (substTy A σ) (@substTm Θ Δ A t σ) δ = substTy_comp' ▸ @substTm Γ Δ A t (σ ∘ δ)
+  @[simp] theorem substTmE_comp (δ σ : SubstE) : substTmE Γ (substTmE Θ t δ) σ = substTmE Γ t (compE Γ δ σ) := by
     sorry
 end
 
-#exit
+
+/-
+def substTy_comp {δ : Subst Θ Δ} {σ : Subst Γ Θ} : substTy (substTy A δ) σ = substTy A (δ ∘ σ) := by sorry
+def substTm_comp : substTm (substTm t σ) δ = substTy_comp.symm ▸ substTm t (σ ∘ δ) := sorry
+def comp_wki {σ : Subst Γ Δ} : σ ∘ (wki (W := W)) = wk σ := by sorry
+def substTy_wk_σ : substTy (substTy A σ) (wki (W := W)) = substTy A (wk σ) := by simp_all only [substTy_comp, comp_wki]
+-/
+
 
 -- set_option pp.proofs true in
 set_option pp.explicit true in
@@ -496,7 +510,7 @@ mutual
 
   -- `mkVar : (Γ : Con) -> (v : Fin Γ.len) -> Var Γ Γₙ[wkn Γ (v+1)]`
   def mkVarW : (Γw : ConW Γ) -> (v : Fin Γ.len) ->
-    VarW Γ (substTyE Γ (Γ ─ ⟨v.val + 1, by omega⟩) (Γ.get ⟨v.val, by omega⟩) (wknE Γ v.succ)) (mkVarE Γ v)
+    VarW Γ (substTyE Γ (Γ.get ⟨v.val, by omega⟩) (wknE Γ v.succ)) (mkVarE Γ v)
   | .nil, v => Fin.elim0 v
   | @ConW.ext Γ X Γw Xw, ⟨0  , h⟩ => by -- expected `Var (Γ, X) (get (Γ, X) 0)[wkn (Γ, X) (0 + 1)]`
     -- by defeq we have `get (Γ, X) 0 ≡ X`
@@ -514,7 +528,7 @@ mutual
   | @ConW.ext Γ X Γw Xw, ⟨v+1, h⟩ => by -- expected `Var (Γ, X) (get (Γ, X) (v+1))[wkn (Γ, X) (v + 1 + 1)]`
     rw [ConE.len] at h
     -- simp
-    rw [drop_ext_1_n (h := by omega)]
+    -- rw [drop_ext_1_n (h := by omega)]
     simp
     rw [get_ext_1]
 
@@ -540,11 +554,11 @@ end
 -- TODO:
 mutual
   /-- `substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ` -/
-  def substTyW (Γw : ConW Γ) (Δw : ConW Δ) (Aw : TyW Δ A) (σw : SubstW Γ Δ σ) : TyW Γ (substTyE Γ Δ A σ) := sorry
+  def substTyW (Γw : ConW Γ) (Δw : ConW Δ) (Aw : TyW Δ A) (σw : SubstW Γ Δ σ) : TyW Γ (substTyE Γ A σ) := sorry
   /-- `substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)` -/
-  def substTmW (Γw : ConW Γ) (Δw : ConW Δ) (Aw : TyW Δ A) (tw : TmW Δ A t) (σw : SubstW Γ Δ σ) : TmW Γ (substTyE Γ Δ A σ) (substTmE Γ Δ t σ) := sorry
+  def substTmW (Γw : ConW Γ) (Δw : ConW Δ) (Aw : TyW Δ A) (tw : TmW Δ A t) (σw : SubstW Γ Δ σ) : TmW Γ (substTyE Γ A σ) (substTmE Γ t σ) := sorry
   /-- `comp {Γ Θ Δ : Con} : Subst Θ Δ -> Subst Γ Θ -> Subst Γ Δ` -/
-  def compW (Γw : ConW Γ) (Θw : ConW Θ) (Δw : ConW Δ) (δw : SubstW Θ Δ δ) (σw : SubstW Γ Θ σ) : SubstW Γ Δ (compE Γ Θ Δ δ σ) := sorry
+  def compW (Γw : ConW Γ) (Θw : ConW Θ) (Δw : ConW Δ) (δw : SubstW Θ Δ δ) (σw : SubstW Γ Θ σ) : SubstW Γ Δ (compE Γ δ σ) := sorry
 end
 
 def Con : Type                                                                               := @PSigma ConE ConW
@@ -557,9 +571,9 @@ abbrev Con.len (Γ : Con) : Nat                                                 
 abbrev Con.drop (Γ : Con) (n : Fin (Γ.len + 1)) : Con                                           := ⟨Γ.1.drop n, dropW Γ.2 n⟩
 def Con.get (Γ : Con) (v : Fin Γ.len) : Ty (Γ.drop v.succ)                                   := ⟨Γ.1.get v, getW Γ.2 v⟩
 def wkn {Γ : Con} (n : Fin (Γ.len + 1)) : Subst Γ (Γ.drop n)                                 := ⟨wknE Γ.1 n, wknW Γ.2 n⟩
-def substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ                                    := ⟨substTyE Γ.1 Δ.1 A.1 σ.1, substTyW Γ.2 Δ.2 A.2 σ.2⟩
-def substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)         := ⟨substTmE Γ.1 Δ.1     t.1 σ.1, substTmW Γ.2 Δ.2 A.2 t.2 σ.2⟩
-def comp {Γ Θ Δ : Con} (δ : Subst Θ Δ) (σ : Subst Γ Θ) : Subst Γ Δ                           := ⟨compE Γ.1 Θ.1 Δ.1 δ.1 σ.1, compW Γ.2 Θ.2 Δ.2 δ.2 σ.2⟩
+def substTy {Γ Δ : Con} (A : Ty Δ) (σ : Subst Γ Δ) : Ty Γ                                    := ⟨substTyE Γ.1      A.1 σ.1, substTyW Γ.2 Δ.2 A.2 σ.2⟩
+def substTm {Γ Δ : Con} {A : Ty Δ} (t : Tm Δ A) (σ : Subst Γ Δ) : Tm Γ (substTy A σ)         := ⟨substTmE Γ.1          t.1 σ.1, substTmW Γ.2 Δ.2 A.2 t.2 σ.2⟩
+def comp {Γ Θ Δ : Con} (δ : Subst Θ Δ) (σ : Subst Γ Θ) : Subst Γ Δ                           := ⟨compE Γ.1         δ.1 σ.1, compW Γ.2 Θ.2 Δ.2 δ.2 σ.2⟩
 notation δ:max " ∘ " σ:max => comp δ σ
 
 /-- `mkVar : (Γ : Con) -> (v : Fin Γ.len) -> Var Γ  Γᵥ[wkn Γ (v+1)]` -/
@@ -580,7 +594,7 @@ abbrev wki {Γ : Con} {W : Ty Γ} : Subst (Γ.ext W) Γ := wkn ⟨1, by unfold C
 /-- `wk : {Γ Δ : Con} -> {W : Ty Γ} -> (Γ <- Δ) -> (Γ, W <- Δ)` -/
 abbrev wk {Γ Δ : Con} {W : Ty Γ} (σ : Subst Γ Δ) : Subst (Γ.ext W) Δ := σ ∘ wki
 
-def substTy_E : (@substTy Γ Δ A σ).fst = substTyE Γ.1 Δ.1 A.1 σ.1 := rfl
+def substTy_E : (@substTy Γ Δ A σ).fst = substTyE Γ.1 A.1 σ.1 := rfl
 
 /-- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]`. -/
 def Var.vz : Var (Con.ext Γ A) (substTy A wki) := ⟨.vz Γ.1 A.1, by simp_all only [substTy_E]; exact VarW.vz Γ.2 A.2⟩ -- ? why does this reach max recursion depth without the simp_all lol
@@ -626,17 +640,39 @@ def Tm.app {A : Ty Γ} {B : Ty (Γ.ext A)} (f : Tm Γ (.Pi A B)) (a : Tm Γ A) :
 def Con.ext_pull (Γ : Con) (A : Ty Γ) : (Γ.fst.ext A.fst) = (Γ.ext A).fst := rfl
 def drop_ext_1 (Γ : Con) (W : Ty Γ) : (Γ.ext W).drop ⟨1, by simp [Con.len, ConE.len]⟩ = Γ := rfl
 
-#check substTyE_comp
--- TODO: Prove these, but **not here**! Prove them about the -E version instead, then these will be trivial
-@[simp] def Subst.substTy_comp {δ : Subst Θ Δ} {σ : Subst Γ Θ} : substTy (substTy A δ) σ = substTy A (δ ∘ σ) := by sorry
-@[simp] def Subst.substTm_comp : substTm (substTm t σ) δ = substTy_comp.symm ▸ substTm t (σ ∘ δ) := sorry
-@[simp] def Subst.comp_wki {σ : Subst Γ Δ} : σ ∘ (wki (W := W)) = wk σ := by sorry
-@[simp] def Subst.substTy_wk_σ : substTy (substTy A σ) (wki (W := W)) = substTy A (wk σ) := by simp_all only [substTy_comp, comp_wki]
+section SubstComp
+  -- TODO: Prove these, but **not here**! Prove them about the -E version instead, then these will be trivial
+
+  -- #check substTyE_comp
+  -- @[simp] def substTy_comp' {δ : Subst Θ Δ} {σ : Subst Γ Θ} : @substTy Γ Θ (@substTy Θ Δ A δ) σ = @substTy Γ Δ A (@comp Γ Θ Δ δ σ) := by sorry
+  -- @[simp] def substTm_comp' {A : Ty Δ} {t : Tm Δ A}
+  --   : @substTm Γ Θ (substTy A σ) (@substTm Θ Δ A t σ) δ = substTy_comp' ▸ @substTm Γ Δ A t (σ ∘ δ)
+  --   := sorry
+
+  @[simp] def substTy_comp {δ : Subst Θ Δ} {σ : Subst Γ Θ} : substTy (substTy A δ) σ = substTy A (δ ∘ σ) := by
+    match A with
+    | ⟨.U _Δ, w⟩ => simp only [substTy, substTyE]
+    | ⟨.El _Δ t, w⟩ =>
+      simp only [substTy, substTyE]
+      simp only [comp]
+      simp_all only [substTmE_comp]
+    | ⟨.Pi Δ A B, w⟩ => sorry
+  @[simp] def substTm_comp : substTm (substTm t σ) δ = substTy_comp.symm ▸ substTm t (σ ∘ δ) := sorry
+  @[simp] def comp_wki {σ : Subst Γ Δ} : σ ∘ (wki (W := W)) = wk σ := by sorry
+  @[simp] def substTy_wk_σ : substTy (substTy A σ) (wki (W := W)) = substTy A (wk σ) := by simp_all only [substTy_comp, comp_wki]
+end SubstComp
 
 /-- Parellel weakening `wkp {Γ Δ} {A : Ty Δ} (σ : Γ <- Δ) : (Γ, A[σ]) <- (Δ, A)`. -/
 abbrev wkp {Γ Δ} {A : Ty Δ} (σ : Subst Γ Δ) : Subst (Γ.ext (substTy A σ)) (Δ.ext A) :=
-  .cons (wk σ) (.var (Subst.substTy_wk_σ ▸ Var.vz))
+  .cons (wk σ) (.var (substTy_wk_σ ▸ Var.vz))
 
+
+theorem comp_wkp {Γ Θ Δ : Con} {A : Ty Δ} {σ : Subst Γ Θ} {δ : Subst Θ Δ}
+  : @comp (Γ.ext (substTy (substTy A δ) σ)) (Θ.ext (substTy A δ)) (Δ.ext A)
+      (@wkp Θ Δ A δ)
+      (@wkp Γ Θ (substTy A δ) σ)
+    = substTy_comp ▸ wkp (@comp Γ Θ Δ δ σ)
+  := by sorry
 
 -- TODO: rest of the constructors (easy)
 
