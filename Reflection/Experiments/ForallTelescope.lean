@@ -1,4 +1,4 @@
-import Reflection.Vec
+import Reflection.Util.Vec
 
 def ForallTelescope (doms : Vec (Sort u) k) (body : ((idx : Fin k) -> Get doms idx) -> Type (max u v)) : Type (max u v) :=
   match doms with

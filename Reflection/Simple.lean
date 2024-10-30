@@ -85,14 +85,14 @@ example : ConM (X := Empty) [] (fun n => n) (fun o _ => nomatch o) (fun o _ => n
   intro A x
   exact nomatch x
 
-example : ConM (X := Unit) (Y := Nat) [⬝] (fun u => 123) (fun | ⬝, .vz => ()) (fun | ⬝, .vz => nat_lit 123) := by
+example : ConM (X := Unit) (Y := Nat) [⬝] (fun _ => 123) (fun | ⬝, .vz => ()) (fun | ⬝, .vz => nat_lit 123) := by
   simp only [ConM]
   intro A x
   cases A with
   | nil =>
     simp [TyM]
     let .vz := x
-    sorry -- the goal here is essentially `123 = 123`, but Lean struggles with it.
+    rfl -- the goal here is essentially `123 = 123`, but Lean struggles with it.
   | self A' => exact nomatch x
 
 /-- A context with natural numbers offset by one. -/
@@ -508,7 +508,7 @@ namespace Example.TA2
   | Tm.app _s z => Nat.succ (tan z)
 
   theorem tan_nat_inverse : tan (nat n) = n := by induction n with
-  | zero => simp
+  | zero => sorry
   | succ n ih => simp [tan, nat, ih]
 
   #reduce nat 0

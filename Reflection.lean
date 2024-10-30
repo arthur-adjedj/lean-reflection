@@ -1,8 +1,8 @@
-import Reflection.Vec
+import Reflection.Util.Vec
 -- import Reflection.Simple.Constructors
 -- import Reflection.Simple.Recursor
 -- import Reflection.Simple.Iotas
-import Reflection.Simple.InductiveType
+import Reflection.Simple
 -- import Reflection.Simple.Expressions
 
 
