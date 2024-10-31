@@ -742,7 +742,11 @@ mutual
   | ⟨.El Γ t, w⟩ => sorry
   | ⟨.Pi Γ A B, w⟩ => sorry
 
-  unsafe def Tm.rec (ΓM : ConM Γ) (AM : TyM ΓM A) (BM : TyM (extM ΓM AM) B) : (t : Tm Γ A) -> TmM ΓM AM t
+  unsafe def Tm.rec (ΓM : ConM Γ) (AM : TyM ΓM A)
+    -- (varM : ... -> TmM ... (.var ...))
+    -- (appM : ... -> TmM ... (.app ...))
+    -- (lamM : ... -> TmM ... (.lam ...))
+    : (t : Tm Γ A) -> TmM ΓM AM t
   | ⟨.app Γe Ae Be fe ae, w⟩ =>
     -- w : TmW Γ.fst A.fst (TmE.app Γe Ae Be fe ae)
     let Γ : Con            := ⟨Γe, let .app Γw Aw Bw fw aw := w; Γw⟩
@@ -750,13 +754,24 @@ mutual
     let B : Ty (.ext Γ A)  := ⟨Be, let .app Γw Aw Bw fw aw := w; Bw⟩
     let f : Tm Γ (.Pi A B) := ⟨fe, let .app Γw Aw Bw fw aw := w; fw⟩
     let a : Tm Γ A         := ⟨ae, let .app Γw Aw Bw fw aw := w; aw⟩
+    appM (Con.rec Γ) (Ty.rec A) (Ty.rec B)
+      (Tm.rec (Con.rec Γ) (Ty.rec (.Pi A B)) f)
+      (Tm.rec (Con.rec Γ) (Ty.rec A) a)
 
-    let ih_Γ : ConM Γ := Con.rec Γ
-    let ih_A : TyM ΓM A := Ty.rec A
-    let ih_B : TyM (extM ΓM AM) B := Ty.rec B
-    let ih_f : TmM ΓM (PiM ΓM AM BM) := Ty.rec B
-    -- appM
-    sorry
+    /-
+    has type
+      TmM (Con.rec Γ) (Ty.rec (A.Pi B))                       f         : Sort u
+    but is expected to have type
+      TmM (Con.rec Γ) (PiM (Con.rec Γ) (Ty.rec A) (Ty.rec B)) ?m.863632 : Sort u
+    -- !              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Werden wir hier einen großen rec-rec block brauchen? Falls da `Ty.rec` anstatt `PiM` rein soll.
+    -/
+
+    -- let ih_Γ : ConM Γ := Con.rec Γ
+    -- let ih_A : TyM ΓM A := Ty.rec A
+    -- let ih_B : TyM (extM ΓM AM) B := Ty.rec B
+    -- let ih_f : TmM ΓM (PiM ΓM AM BM) := Ty.rec B
+    -- -- appM
+    -- sorry
   | _ => sorry
 end
 
