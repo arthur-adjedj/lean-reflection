@@ -17,6 +17,8 @@ theorem Fin.ext' : @Eq (Fin (n+1)) ⟨1,h⟩ 1 := by ext; simp [Nat.mod_eq_of_lt
 theorem Fin.add_val_pull {n : Fin (N + 1)} (h : n < N) : @Fin.val (N + 1) (n + 1) = (@Fin.val (N + 1) n) + 1 := by
   simp_all only [Fin.val_add_one_of_lt, natCast_eq_last, Nat.succ_eq_add_one]
 
+/-- If `n` is not the last element, we can add one without wrapping around. -/
+abbrev Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by simp_all only [add_lt_add_iff_right]⟩
 
 mutual
   @[aesop unsafe]
@@ -85,11 +87,6 @@ notation "∣" Γ:60 "∣" => ConE.len Γ
 | .vz .. => 0
 | .vs _ _ v => 1 + v.deBrujin
 
--- This is not provable, because `v.Γ` is arbitrary, since it is not constrained by type indices in the erased version:
--- @[aesop unsafe] theorem VarE.h_val : (v : VarE) -> v.val < ∣v.Γ∣
--- | .vz .. => ...
--- | .vs _ _ _ v => ...
-
 @[aesop unsafe] def SubstE.len : SubstE -> Nat
 | .nil Γ => 0
 | .cons Γ Δ A σ t => 1 + σ.len
@@ -117,14 +114,7 @@ notation Γ:70 " ─ " n:70 => ConE.drop Γ n
 
 example : ConE.drop.impl (.ext Γ A) 1 (by rw [ConE.len]; omega) = Γ := rfl
 example : ConE.drop (.ext Γ A) ⟨1, h⟩ = Γ := rfl -- It's important for this to work by rfl
--- ? Can we make this work by rfl too?
--- example : ConE.drop (.ext Γ A)  1     = Γ := by
---   unfold OfNat.ofNat
---   unfold Fin.instOfNatOfNeZeroNat
---   simp [Fin.ofNat']
---   aesop
---   rfl
---   done
+-- example : ConE.drop (.ext Γ A) 1 = Γ := by rfl -- ? Can we make this work by rfl too?
 
 section
   set_option allowUnsafeReducibility true
@@ -155,12 +145,6 @@ end
 | .vs _ _ v, .cons _ _ _ σ _ => substVarE v σ
 | _, _ => .error
 
-#check Fin.castSucc
-#check Fin.val_add_one_of_lt
-
-/-- If `n` is not the last element, we can add one without wrapping around. -/
-abbrev Fin.addOne (n : Fin (N+1)) (h : n.val < N) : Fin (N+1) := ⟨n.val + 1, by simp_all only [add_lt_add_iff_right]⟩
-
 mutual
   /-- `wkn {Γ : Con} (n : Fin (Γ.len + 1)) : (Γ <- Γ - n)` -/
   abbrev wknE (Γ : ConE) (n : Fin (Γ.len + 1)) : SubstE :=
@@ -182,8 +166,7 @@ mutual
   abbrev mkVarE : (Γ : ConE) -> (v : Fin Γ.len) -> VarE
   | .nil, v => Fin.elim0 v
   | .ext Γ X, ⟨0  , _⟩ => -- expected `Var (Γ, X) (get (Γ, X) 0)[wkn (Γ, X) (0 + 1)]`
-    -- by defeq we have `get (Γ, X) 0 ≡ X`
-    .vz Γ X -- `: Var (Γ, X) X[wki]`, where `wki` is just a shorthand for `wkn (Γ, X) 1`.
+    .vz Γ X -- `: Var (Γ, X) X[wkn (Γ,X) 1]`
   | .ext Γ X, ⟨v+1, h⟩ => -- expected `Var (Γ, X) (get (Γ, X) (v+1))[wkn (Γ, X) (v + 1 + 1)]`
     -- ! need theorem get_ext : get (Γ, X) (v+1) = get Γ v
     -- ! need theorem : wkn Γ (v+1) ∘ wkn (Γ, X) 1 = wkn (Γ, X) (v+1+1)
@@ -199,8 +182,6 @@ mutual
       (mkVarE Γ ⟨v, by rw [ConE.len] at h; linarith⟩) -- `mkVar Γ v : Var Γ (Γ.get v)[wkn Γ (v+1)]`
   termination_by Γ v => sizeOf Γ
 end
-
-#print axioms wknE
 
 /-- Identity substitution. `id : {Γ : Con} -> (Γ <- Γ)`. Just a shorthand for `wkn Γ 0`. -/
 def idE (Γ : ConE) : SubstE := wknE Γ 0
@@ -271,25 +252,18 @@ def wkpE (Γ Δ : ConE) (A : TyE) (σ : SubstE) : SubstE :=
   | .nil => rfl
   | .ext Γ A => by rw [ConE.len] at h; rename_i Γ_1; simp_all only [add_eq_zero, one_ne_zero, false_and]
 
-@[simp] theorem drop_0 : {Γ : ConE} -> Γ ─ 0 = Γ := rfl
+@[simp] theorem dropE_0 : {Γ : ConE} -> Γ ─ 0 = Γ := rfl
+@[simp] theorem dropE_ext_1' : {Γ : ConE} -> {h : 1 < ∣Γ.ext A∣ + 1} -> .ext Γ A ─ ⟨1, h⟩ = Γ := rfl
+@[simp] theorem dropE_ext_1_n : {Γ : ConE} -> {h : _ < ∣Γ.ext A∣ + 1} -> {h' : _ < _} -> .ext Γ A ─ ⟨n+1, h⟩ = Γ ─ ⟨n, h'⟩ := rfl
 
-@[simp] theorem drop_ext_1' : {Γ : ConE} -> {h : 1 < ∣Γ.ext A∣ + 1} -> .ext Γ A ─ ⟨1, h⟩ = Γ
-| .nil    , _ => by simp_all only [Fin.mk_one, Fin.isValue]; --simp_all only [lt_add_iff_pos_left, Fin.isValue]; rfl
-| .ext Γ A, h => rfl
--- @[simp] theorem drop_ext_1 : {Γ : ConE} -> .ext Γ A ─ 1 = Γ := by aesop?
-
-@[simp] theorem drop_ext_1_n : {Γ : ConE} -> {h : _ < ∣Γ.ext A∣ + 1} -> {h' : _ < _} -> .ext Γ A ─ ⟨n+1, h⟩ = Γ ─ ⟨n, h'⟩
-| .nil    , _ => rfl
-| .ext Γ A, h => rfl
-
-@[simp] theorem drop_all {Γ : ConE} {n : Fin (Γ.len + 1)} (h : Γ.len = n) : Γ ─ n = .nil :=
+@[simp] theorem dropE_all {Γ : ConE} {n : Fin (Γ.len + 1)} (h : Γ.len = n) : Γ ─ n = .nil :=
   match Γ, n with
   | Γ, 0 => by
-    rw [Γ_len0_nil h, drop_0]
+    rw [Γ_len0_nil h, dropE_0]
     exact 0 -- this is so weird?
   | .ext Γ A, ⟨.succ n, hsn⟩ => by
     rw [ConE.drop]
-    exact @drop_all Γ ⟨n, by simp_all only [ConE.len, Nat.succ_eq_add_one]; rw [add_comm, h]; simp⟩
+    exact @dropE_all Γ ⟨n, by simp_all only [ConE.len, Nat.succ_eq_add_one]; rw [add_comm, h]; simp⟩
       (by -- ugly proof
         simp_all only
         simp_all only [Nat.succ_eq_add_one, lt_add_iff_pos_right, zero_lt_one]
@@ -309,17 +283,17 @@ theorem con_ext_get' (Γ : ConE) (v : Fin Γ.len) (h1 : ↑v + 1 < ∣Γ∣ + 1)
   := by
   match Γ, v with
   | .nil    , n => exact Fin.elim0 n
-  | .ext Γ A, ⟨0  , h⟩ => simp only [zero_add, drop_ext_1', ConE.get, Fin.zero_eta, drop_0]
+  | .ext Γ A, ⟨0  , h⟩ => simp only [zero_add, dropE_ext_1', ConE.get, Fin.zero_eta, dropE_0]
   | .ext Γ A, ⟨v+1, h⟩ =>
     have ih := con_ext_get' Γ ⟨v, by rw [ConE.len] at h; omega⟩ (by omega) (by omega) (by omega)
     simp only [ConE.drop, ConE.get, ih]
 
 -- theorem con_ext_get (Γ : ConE) (v : Fin Γ.len) : .ext (Γ ─ v.succ) (Γ.get v) = Γ ─ v.castSucc := by sorry -- con_ext_get'
 
-@[simp] theorem get_0 (Γ : ConE) (A : TyE) {h : 0 < ∣Γ.ext A∣} : (Γ.ext A).get ⟨0, h⟩ = A := by rw [ConE.get]
+@[simp] theorem getE_0 (Γ : ConE) (A : TyE) {h : 0 < ∣Γ.ext A∣} : (Γ.ext A).get ⟨0, h⟩ = A := by rw [ConE.get]
 
 /-- `get (Γ, X) (v+1) = get Γ v` -/
-@[simp] theorem get_ext_1 (Γ : ConE) (A : TyE) (v) {h : _ < _} {h'} : (Γ.ext A).get ⟨v+1, h⟩ = Γ.get ⟨v, h'⟩ := by rw [ConE.get]
+@[simp] theorem getE_ext_1 (Γ : ConE) (A : TyE) (v) {h : _ < _} {h'} : (Γ.ext A).get ⟨v+1, h⟩ = Γ.get ⟨v, h'⟩ := by rw [ConE.get]
 
 #check wkpE ?Θ .nil ?A (.nil ?Θ)
 
@@ -343,8 +317,7 @@ mutual
       rw [ih_B]
       rw [wkpE_compE]
 
-  /-- `t[δ][σ] = t[δ ∘ σ]`.
-    The full version of this is: `@substTm Γ Θ (substTy A σ) (@substTm Θ Δ A t σ) δ = substTy_comp ▸ @substTm Γ Δ A t (σ ∘ δ)` -/
+  /-- `t[δ][σ] = t[δ ∘ σ]`. The full version of this is: `@substTm Γ Θ (substTy A σ) (@substTm Θ Δ A t σ) δ = substTy_comp ▸ @substTm Γ Δ A t (σ ∘ δ)` -/
   @[simp] theorem substTmE_comp (δ σ : SubstE) : substTmE Γ (substTmE Θ t δ) σ = substTmE Γ t (compE Γ δ σ) := by
     sorry
 
@@ -423,7 +396,6 @@ section Tests
 end Tests
 
 
-#exit
 
 /-
   # Wellformedness part
@@ -442,14 +414,6 @@ mutual
   | Pi : ConW Γ -> TyW Γ A -> TyW (.ext Γ A) B -> TyW Γ (.Pi Γ A B)
   /-- A mutual inductive type which may refer to existing types in Γ, and has type A. -/
   -- | mind : MInd /- Γ -/ A -> Ty Γ
-
-  -- @[aesop constructors cases]
-  -- inductive VarW : ConE -> TyE -> VarE -> Prop
-  -- /- `vz {Γ} {A : Ty Γ} : Var (Γ, A) A[wki]` -/
-  -- | vz : ConW Γ -> TyW Γ A -> VarW (.ext Γ A) (substTyE (.ext Γ A) Γ A (wkiE Γ A)) (.vz Γ A)
-  -- /- `vs {Γ} ~~{A : Ty Γ}~~ {B : Ty Γ} : Var Γ A -> Var (Γ, B) A[wki]` -/
-  -- | vs : ConW Γ -> TyW Γ A -> TyW Γ B -> VarW Γ A v
-  --   -> VarW (.ext Γ B) (substTyE (.ext Γ B) Γ A (wkiE Γ B)) (.vs Γ /- ~~A~~ -/ B v)
 
   @[aesop unsafe constructors cases]
   inductive VarW : ConE -> TyE -> VarE -> Prop
@@ -491,7 +455,7 @@ end
 
 @[aesop unsafe] theorem getW {Γ : ConE} : (Γw : ConW Γ) -> (v : Fin Γ.len) -> TyW (Γ ─ v.succ) (Γ.get v)
 | .nil    , v => Fin.elim0 v
-| @ConW.ext Γ A Γw Aw, ⟨0  , h⟩ => by simp only [Fin.succ_mk, Nat.succ_eq_add_one, zero_add, ConE.drop, drop_0, ConE.get]; exact Aw
+| @ConW.ext Γ A Γw Aw, ⟨0  , h⟩ => by simp only [Fin.succ_mk, Nat.succ_eq_add_one, zero_add, ConE.drop, dropE_0, ConE.get]; exact Aw
 | @ConW.ext Γ A Γw Aw, ⟨v+1, h⟩ => by simp [ConE.drop, ConE.get]; exact getW Γw ⟨v, by rw [ConE.len] at h; omega⟩
 
 
@@ -503,7 +467,7 @@ mutual
   def wknW (Γw : ConW Γ) (n : Fin (Γ.len + 1)) : SubstW Γ (Γ ─ n) (wknE Γ n) := by
     -- SubstW.nil {Γe : ConE} : ConW Γe → SubstW ConE.nil Γe (SubstE.nil Γe)
     if h : Γ.len = n then
-      rw [wknE_all h, drop_all h]
+      rw [wknE_all h, dropE_all h]
       exact @SubstW.nil Γ Γw
       done
     else
@@ -549,7 +513,7 @@ mutual
     -- simp
     -- rw [drop_ext_1_n (h := by omega)]
     simp
-    rw [get_ext_1]
+    rw [getE_ext_1]
 
     let varr := mkVarE Γ ⟨v, by omega⟩
     let A := varr.idxA
@@ -696,42 +660,113 @@ theorem comp_wkp {Γ Θ Δ : Con} {A : Ty Δ} {σ : Subst Γ Θ} {δ : Subst Θ 
 
 -- TODO: Some funky notation (and maybe remove the notation from the -E stuff, it won't be needed now)
 
+-- universe u
+-- variable {ConM : Con -> Sort u}
+-- variable {TyM {Γ} : (ΓM : ConM Γ) -> Ty Γ -> Sort u}
+-- variable {VarM : (ΓM : ConM Γ) -> (AM : TyM ΓM A) -> Var Γ A -> Sort u}
+-- variable {TmM : (ΓM : ConM Γ) -> (AM : TyM ΓM A) -> Tm Γ A  -> Sort u}
+-- variable {SubstM : (ΓM : ConM Γ) -> (ΔM : ConM Δ) -> Subst Γ Δ -> Sort u}
+-- variable (nilM : ConM .nil)
+-- variable (extM : (ΓM : ConM Γ) -> TyM ΓM A -> ConM (.ext Γ A))
+-- variable (UM : (ΓM : ConM Γ) -> TyM ΓM .U)
+-- #check Ty.El
+-- variable (ElM : {t : Tm Γ .U} -> (ΓM : ConM Γ) -> TmM ΓM (@UM ΓM) t -> TyM ΓM (@Ty.El Γ t))
+-- variable (PiM : (ΓM : ConM Γ) ->
+--   {A : Ty Γ}          -> (AM : TyM ΓM A) ->
+--   {B : Ty (.ext Γ A)} -> (BM : TyM (extM ΓM AM) B) ->
+--   TyM ΓM (.Pi A B))
 
--- # !
--- # Everything below this line is VERY out of date!
-
-#exit
 
 -- # And now... the eliminator
 
 universe u
+
+-- ## Motives (motives for sort constructors)
 variable {ConM : Con -> Sort u}
 variable {TyM : {Γ : Con} -> (ΓM : ConM Γ) -> Ty Γ -> Sort u}
 variable {VarM : {Γ : Con} -> (ΓM : ConM Γ) -> {A : Ty Γ} -> (AM : TyM ΓM A) -> Var Γ A -> Sort u}
 variable {TmM :  {Γ : Con} -> (ΓM : ConM Γ) -> {A : Ty Γ} -> (AM : TyM ΓM A) -> Tm Γ A  -> Sort u}
 variable {SubstM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) -> Subst Γ Δ -> Sort u}
+
+-- ## Cases (motives for point constructors)
+
+-- Con
 variable (nilM : ConM .nil)
 variable (extM : {Γ : Con} -> (ΓM : ConM Γ) -> {A : Ty Γ} -> TyM ΓM A -> ConM (.ext Γ A))
+
+-- Ty
 variable (UM : {Γ : Con} -> (ΓM : ConM Γ) -> TyM ΓM .U)
 variable (ElM : {Γ : Con} -> (ΓM : ConM Γ) -> (t : Tm Γ .U) -> TmM ΓM (UM ΓM) t -> TyM ΓM (.El t))
 variable (PiM : {Γ : Con} -> (ΓM : ConM Γ) ->
-  {A : Ty Γ}          -> (AM : TyM ΓM A) ->
+  {A : Ty Γ}          -> (AM : TyM  ΓM          A) ->
   {B : Ty (.ext Γ A)} -> (BM : TyM (extM ΓM AM) B) ->
   TyM ΓM (.Pi A B))
-/- ? Maybe we can always obtain substTyM, and don't need it to be a case for the recursors? -/
-variable (substTyM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) -> {A : Ty Δ} -> (AM : TyM ΔM A) -> (σ : Subst Γ Δ) -> TyM ΓM (substTy A σ))
-variable (substNilM : {Γ : Con} -> (ΓM : ConM Γ) -> SubstM ΓM nilM .nil)
-variable (substConsM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) ->
+
+-- Our 5-mutual block with: substTy, substTm, comp, wkn, mkVar
+/- ? Maybe we can always obtain substTyM/substTmM/compM/wknM/mkVarM, and don't need these in the recursor? -/
+variable (substTyM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) -> {A : Ty Δ}
+  -> (AM : TyM ΔM A) -> (σ : Subst Γ Δ) -> TyM ΓM (substTy A σ))
+variable (substTmM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) -> {A : Ty Δ}
+  -> (AM : TyM ΔM A) -> {t : Tm Δ A} -> (tM : TmM ΔM AM t) -> (σ : Subst Γ Δ)
+  -> TmM ΓM (substTyM ΓM ΔM AM σ) (substTm t σ))
+
+-- Subst
+variable (trivialM : {Γ : Con} -> (ΓM : ConM Γ) -> SubstM ΓM nilM .nil) -- `nilM` was taken.
+variable (consM : {Γ : Con} -> (ΓM : ConM Γ) -> {Δ : Con} -> (ΔM : ConM Δ) ->
   {σ : Subst Γ Δ} -> (σM : SubstM ΓM ΔM σ) ->
   (A : Ty Δ) -> (AM : TyM ΔM A) ->
   (t : Tm Γ (substTy A σ)) -> (tM : @TmM Γ ΓM (substTy A σ) (substTyM ΓM ΔM AM σ) t) ->
   SubstM ΓM (extM ΔM AM) (.cons σ t))
+
+-- Tm
+#check Tm.app
 variable (appM : {Γ : Con} -> (ΓM : ConM Γ) ->
-  (A : Ty Γ) ->           (AM : TyM ΓM           A) ->
-  (B : Ty (.ext Γ A)) ->  (BM : TyM (extM ΓM AM) B) ->
-  (f : Tm Γ (.Pi A B)) -> (fM : TmM ΓM (PiM ΓM AM BM) f) ->
-  (a : Tm Γ A) ->         (aM : TmM ΓM AM a) ->
-  TmM ΓM (substTyM ΓM (extM ΓM AM) BM (subst1 a)) (.app f a))
+  {A : Ty Γ} ->           (AM : TyM ΓM           A) ->
+  {B : Ty (.ext Γ A)} ->  (BM : TyM (extM ΓM AM) B) ->
+  {f : Tm Γ (.Pi A B)} -> (fM : TmM ΓM (PiM ΓM AM BM) f) ->
+  {a : Tm Γ A} ->         (aM : TmM ΓM AM a) ->
+  TmM ΓM (substTyM ΓM (extM ΓM AM) BM (Subst.apply a)) (.app f a))
+
+-- ## The actual recursors
+
+mutual
+  unsafe def Con.rec : (Γ : Con) -> ConM Γ
+  | ⟨.nil, w⟩ => nilM
+  | ⟨.ext Γe Ae, w⟩ =>
+    let Γ : Con  := ⟨Γe, let .ext Γw Aw := w; Γw⟩
+    let A : Ty Γ := ⟨Ae, let .ext Γw Aw := w; Aw⟩
+    extM (Con.rec Γ) (Ty.rec A)
+
+  unsafe def Ty.rec : (A : Ty Γ) -> TyM ΓM A
+  | ⟨.U Γ, w⟩ => sorry -- UM ΓM
+  | ⟨.El Γ t, w⟩ => sorry
+  | ⟨.Pi Γ A B, w⟩ => sorry
+
+  unsafe def Tm.rec (ΓM : ConM Γ) (AM : TyM ΓM A) (BM : TyM (extM ΓM AM) B) : (t : Tm Γ A) -> TmM ΓM AM t
+  | ⟨.app Γe Ae Be fe ae, w⟩ =>
+    -- w : TmW Γ.fst A.fst (TmE.app Γe Ae Be fe ae)
+    let Γ : Con            := ⟨Γe, let .app Γw Aw Bw fw aw := w; Γw⟩
+    let A : Ty Γ           := ⟨Ae, let .app Γw Aw Bw fw aw := w; Aw⟩
+    let B : Ty (.ext Γ A)  := ⟨Be, let .app Γw Aw Bw fw aw := w; Bw⟩
+    let f : Tm Γ (.Pi A B) := ⟨fe, let .app Γw Aw Bw fw aw := w; fw⟩
+    let a : Tm Γ A         := ⟨ae, let .app Γw Aw Bw fw aw := w; aw⟩
+
+    let ih_Γ : ConM Γ := Con.rec Γ
+    let ih_A : TyM ΓM A := Ty.rec A
+    let ih_B : TyM (extM ΓM AM) B := Ty.rec B
+    let ih_f : TmM ΓM (PiM ΓM AM BM) := Ty.rec B
+    -- appM
+    sorry
+  | _ => sorry
+end
+
+#check Con.rec
+
+
+-- # !
+-- # Everything below this line is VERY out of date!
+
+#exit
 
 set_option pp.proofs.threshold 5
 mutual
