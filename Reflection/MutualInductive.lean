@@ -1,53 +1,69 @@
 import Lean -- not essential: only for `Lean.Meta.getEqnsFor?` later
 import Reflection.Util.EqHelpers
 
+
 /-
   Adaptation of https://dx.doi.org/10.4230/LIPIcs.FSCD.2020.23 for Lean4.
   Agda source for the above lives at https://bitbucket.org/javra/inductive-families
 -/
 
 set_option pp.proofs true
+set_option pp.universes true
+set_option linter.unusedVariables false
+
+/--Direction of a parameter, describes whether it
+is used in an invariant way `none`, covariant `leq`, contravariant `geq` of equivariant `eq`.
+Currently unused.-/
+inductive Dir where
+  | none
+  | leq
+  | geq
+  | eq
 
 -- # Syntax
 
-/-- Example for `Nat` is `U`, for `Vec` is `SPi Nat (fun n => U)`. -/
-inductive Tyₛ : Type (u+1)
-| U : Tyₛ
+/-- Example for `Nat` is `@U []`, for `List` is `@U [leq]`. -/
+inductive Tyₛ (l : List Dir): Type u
+| U : Tyₛ l
+-- No need to work on indexed inductives just yet, let's focus on polymorphic types first
 -- | SArr : (T : Type u) -> Tyₛ -> Tyₛ
 open Tyₛ
 
-inductive Conₛ
-| nil : Conₛ
-| cons : Tyₛ -> Conₛ -> Conₛ
+inductive Conₛ (l : List Dir)
+| nil : Conₛ l
+| cons : Tyₛ l -> Conₛ l -> Conₛ l
 notation "[]" => Conₛ.nil
 infixr:67 " :: " => Conₛ.cons
 
 /-- De-brujin variable referring to an entry in the context.
 A context is for example `["Even", "Odd"]`, then `.vz` refers to `"Even"`.
 These are nameless, the quotations are only to ease explanation. -/
-inductive Varₛ : Conₛ -> Tyₛ -> Type (u+1)
+inductive Varₛ : Conₛ l -> Tyₛ l -> Type u
 | vz :               Varₛ (Aₛ :: Γₛ) Aₛ
 | vs : Varₛ Γₛ Aₛ -> Varₛ (Bₛ :: Γₛ) Aₛ
 open Varₛ
 
-set_option genInjectivity false in
+inductive Varₚ : List Dir → Type (u+1)
+| vz : Varₚ [A]
+| vs : Varₚ l -> Varₚ (Bₛ :: l)
+
 /-- `t : Tmₛ Γ A` corresponds to `Γ ⊢ t : A`.
 Original Agda: https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IF.agda#lines-25:27 -/
-inductive Tmₛ.{u} : Conₛ.{u} -> Tyₛ.{u} -> Type (u+1)
+inductive Tmₛ.{u} : Conₛ.{u} l -> Tyₛ.{u} l -> Type (u+1)
 /-- A variable is a term.
 ```-
 (a : A) ∈ Γ
------------var
+-----------varInd
 Γ ⊢ₛ a : A
 ``` -/
-| var : Varₛ Γ A -> Tmₛ Γ A
+| varInd : Varₛ Γ A -> Tmₛ Γ A
 /-- Function application.
 ```-
-Γ ⊢ₛ f : (x : T) -> A x      arg : T
--------------------------------------app-Intro
-Γ ⊢ₛ f arg : A arg
+A ∈ l
+-----------varParam
+Γ ⊢ₛ A : Type
 ``` -/
--- | app : Tmₛ Γ (SArr T A) -> (arg : T) -> Tmₛ Γ A
+| varParam : Varₚ l → Tmₛ Γ (@U l)
 infixl:50 " @ " => Tmₛ.app
 
 -- -- ! This fails:
@@ -68,8 +84,9 @@ The only way to create a `Tyₚ` is by ending it with a `El`, which must be a te
 The only way to create a term like that is by using `Tmₛ.app` and `Tmₛ.var`.
 For example the variables are `Even` and `Odd`, i.e. the other types in the mutual block being defined,
 then `Even @ 123` is a term in universe `U`. -/
-inductive Tyₚ : Conₛ -> Type (u+1)
-| El : Tmₛ Γₛ U -> Tyₚ Γₛ
+inductive Tyₚ : Conₛ l -> Type (u+1)
+| El : Tmₛ.{u} Γₛ U -> Tyₚ Γₛ
+-- No need to work with dependent types just yet.
 | PArr   : (T : Type u) -> Tyₚ Γₛ -> Tyₚ Γₛ
 /-- Allows us to introduce nested binders `(x : Self ...) -> ...`.
   `PFunc` is non-dependent, because it makes no sense to have `(self : Self ...) -> Self self`.
@@ -87,7 +104,7 @@ Example (vectors):
 ```
 V_nil :: V_cons A :: []
 ``` -/
-inductive Conₚ : Conₛ -> Type (u+1)
+inductive Conₚ (Γ : Conₛ l): Type (u+1)
 | nil : Conₚ Γ
 | cons : Tyₚ Γ -> Conₚ Γ -> Conₚ Γ
 notation "[]" => Conₚ.nil
@@ -95,38 +112,58 @@ infixr:67 " :: " => Conₚ.cons
 
 section Examples
   /-- Corresponds to `Nat : U`. -/
-  def Nₛ : Conₛ := U :: []
+  def Nₛ : Conₛ .nil := U :: []
   /-- Corresponds to the two constructors `Nat.zero : Nat` and `Nat.succ : Nat -> Nat`. -/
-  def N  : Conₚ Nₛ := El (.var .vz) :: PFunc (.var .vz) (El (.var .vz)) :: []
+  def N  : Conₚ Nₛ := El (.varInd .vz) :: PFunc (.varInd .vz) (El (.varInd .vz)) :: []
 
-  -- List : U
-  def Vₛ : Conₛ := U :: []
+  -- List : Type → U
+  def Vₛ : Conₛ [.none] := U :: []
 
-  -- Vec : Nat -> U   ⊢ₛ  List A : U
-  def V_nil : Tyₚ Vₛ := El (.var .vz) -- Vec 0
+  -- List : Type → U ⊢ₛ  List A : U
+  def V_nil : Tyₚ Vₛ := El (.varInd .vz) -- List A
 
-  -- cons : Nat -> U   ⊢ₛ  A → List A → List A
-  def V_cons {A : Type} : Tyₚ Vₛ :=
-    PArr A <| -- A →
-      PFunc (Tmₛ.var vz) <| -- List A ->
-        El (Tmₛ.var vz) -- List A
+  -- List : Type → U ⊢ₛ  A → List A → List A
+  def V_cons : Tyₚ Vₛ :=
+    PFunc (Tmₛ.varParam .vz) <| -- A →
+      PFunc (Tmₛ.varInd vz) <| -- List A ->
+        El (Tmₛ.varInd vz) -- List A
 
-  def V (A : Type) : Conₚ Vₛ := V_nil :: @V_cons A :: []
+  def V : Conₚ Vₛ := V_nil :: V_cons :: []
 end Examples
 
 -- # Semantics
 
+/-- The type of Parameter Telescopes. `l.Telescope` is a monad, which makes constructions over it useful. -/
+def List.Telescope (l : List Dir) (A : Type (u+1)) := l.foldr (fun T₁ T₂ => Type u → T₂) A
+
+def List.Telescope.pure (l : List Dir) (x : A) : List.Telescope l A :=
+  match l with
+    | .nil => x
+    | .cons hd tl => fun _ : Type _ => List.Telescope.pure tl x
+--
+def List.Telescope.bind (l : List Dir) (x : List.Telescope l A) (f : A → List.Telescope l B)
+: List.Telescope l B :=
+  match l with
+    | .nil => f x
+    | .cons hd tl => fun h : Type _ => List.Telescope.bind tl (x h) (fun y => f y h)
+
+instance : Monad (List.Telescope l) where
+  pure := List.Telescope.pure l
+  bind := List.Telescope.bind l
+
 /-- Interprets a sort type, for example `SPi Nat (fun n => U)` becomes `Nat -> Type`. -/
-def TyₛA.{u, v} : Tyₛ.{u} -> Type ((max u v) + 1)
-| U => Type (max u v)
+def TyₛA : Tyₛ.{u} l -> Type (u+1) := fun _ => (Type u)
 -- | SPi T A => (t : T) -> TyₛA (A t)
 
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat -> Type) × Unit`. -/
-def ConₛA.{u, v} : Conₛ.{u} -> Type ((max u v) + 1)
-| .nil => PUnit.{(max u v) + 2}
-| .cons A Γ => Prod.{(max u v) + 1} (TyₛA.{u, v} A) (ConₛA Γ)
+def ConₛA' : Conₛ l -> Type (u+1)
+  | .nil => PUnit
+  | .cons A Γ => Prod (TyₛA A) (ConₛA' Γ)
+termination_by structural Γₛ => Γₛ
 
-example : ConₛA Vₛ = (Type × PUnit.{2}) := by rfl
+def ConₛA (Γₛ : Conₛ l): Type (u+1) := l.Telescope (ConₛA' Γₛ)
+
+example : ConₛA Vₛ = (Type → (Type × PUnit.{2})) := by rfl
 
 /--
   Variable lookup. Given a context `Γₛ` and an interpretation `γₛ` for that context,
@@ -138,9 +175,16 @@ example : ConₛA Vₛ = (Type × PUnit.{2}) := by rfl
 
   This function returns an actual (unquoted) Lean type, e.g. `Vec`.
 -/
-def VarₛA : {Γₛ : Conₛ} -> Varₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA Aₛ
-| _Aₛ :: _Γₛ, vz  , ⟨a, _ ⟩ => a
-| _   :: _Γₛ, vs v, ⟨_, γₛ⟩ => VarₛA v γₛ
+def VarₛA {Γₛ : Conₛ l} (v : Varₛ Γₛ Aₛ) (c : ConₛA Γₛ): l.Telescope (TyₛA Aₛ) := do
+  let c ← c
+  match v, c with
+    |  vz  , ⟨a, _ ⟩ => pure a
+    |  vs v, ⟨_, γₛ⟩ => VarₛA v (pure γₛ)
+
+
+def VarₚA : {l : List Dir} → Varₚ l -> l.Telescope (Type u)
+|  [d], .vz  => fun A => A
+| _   :: l, .vs v => fun _ => VarₚA v
 
 /-- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
@@ -168,14 +212,15 @@ _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
 ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
 ```
 -/
-def TmₛA.{u} : {Γₛ : Conₛ.{u}} -> {Aₛ : Tyₛ} -> Tmₛ Γₛ Aₛ -> ConₛA Γₛ -> TyₛA.{u} Aₛ
-| _Γ, _A, @Tmₛ.var _   _ v  , γₛ => VarₛA v γₛ
--- | Γ, _, @Tmₛ.app Γ T A t u, γₛ => (TmₛA t γₛ) u
+def TmₛA.{u} {Γₛ : Conₛ.{u} l} {Aₛ : Tyₛ l} (t : Tmₛ Γₛ Aₛ) ( γₛ : ConₛA Γₛ): l.Telescope (TyₛA Aₛ) :=
+match t with
+  | Tmₛ.varInd   v => VarₛA v γₛ
+  | Tmₛ.varParam v => VarₚA v
 
-@[simp] theorem TmₛA_var  : TmₛA (Tmₛ.var v) γₛ = VarₛA v γₛ := by rw [TmₛA]
+@[simp] theorem TmₛA_var  : TmₛA (Tmₛ.varInd v) γₛ = VarₛA v γₛ := by rw [TmₛA]
 -- @[simp] theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
 
-example {Vec : Type} : @TmₛA (U :: []) U (.var .vz) ⟨Vec, ⟨⟩⟩ = Vec := rfl
+example {List : Type → Type} : @TmₛA [.eq] (U :: []) U (.varInd .vz) (fun A => ⟨List A, ⟨⟩⟩) = List := rfl
 
 /-- Interprets a constructor type. See below for examples.  Example:
 ```
@@ -185,20 +230,29 @@ reduces to the type of `Vec.cons` as you would expect:
 ```
 (n : Nat) -> A -> Vec n -> Vec (n + 1)
 ``` -/
-def TyₚA.{u, v} : Tyₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
-| El         Self, γₛ => TmₛA Self γₛ
-| PArr   T    Rest, γₛ => (arg : T)    -> TyₚA Rest γₛ
-| PFunc Self Rest, γₛ => TmₛA Self γₛ -> TyₚA Rest γₛ
+def TyₚA.{u} {Γₛ : Conₛ.{u} l} (t : Tyₚ.{u} Γₛ) (γₛ : ConₛA.{u} Γₛ): l.Telescope (Type u) :=
+match t with
+| El Self => TmₛA.{u} Self γₛ
+| PArr T Rest => do
+  let h ← TyₚA Rest γₛ
+  return T → h
+| PFunc Self Rest => do
+  let hd ← TmₛA Self γₛ
+  let h ← TyₚA Rest γₛ
+  return hd → h
 
-example {Vec : Type} {_A : Type}
-  : TyₚA V_nil ⟨Vec, ⟨⟩⟩
-  = Vec
+example {List : Type → Type}
+  : TyₚA V_nil (fun A => ⟨List A, ⟨⟩⟩)
+  = List
   := rfl
 
-example {Vec : Type} {A : Type}
-  : TyₚA (@V_cons A) ⟨Vec, ⟨⟩⟩
-  = (A -> Vec -> Vec)
+set_option pp.universes false in
+example {List : Type → Type }
+  : TyₚA (V_cons) (fun A => ⟨List A, ⟨⟩⟩)
+  = fun A => A → List A → List A
   := rfl
+
+-- #exit
 
 /-- Interprets a (mutual) inductive type. This is just `TyₚA` for each ctor joined with `×`.
 Example:
@@ -211,13 +265,16 @@ reduces to the Lean type
 × ((n : Nat) -> A -> Vec n -> Vec (n + 1)) -- `Vec.cons`
 × Unit
 ``` -/
-def ConₚA.{u, v} : Conₚ.{u} Γₛ -> ConₛA.{u, v} Γₛ -> Type (max u v)
-| .nil, _ => PUnit
-| .cons A Γ, γₛ => TyₚA.{u, v} A γₛ × ConₚA Γ γₛ
+def ConₚA.{u} {Γₛ : Conₛ.{u} l} : Conₚ.{u} Γₛ -> ConₛA.{u} Γₛ -> l.Telescope (Type u)
+| .nil, _ => pure PUnit.{u+1}
+| .cons A Γ, γₛ => do
+  let t₁ ← TyₚA.{u} A γₛ
+  let t₂ ← ConₚA Γ γₛ
+  return t₁ ×  t₂
 
-example {Vec : Type} {A : Type}
-  : ConₚA (V A) ⟨Vec, ⟨⟩⟩
-  = (Vec × (A -> Vec -> Vec) × Unit)
+example {List : Type → Type} {A : type}
+  : ConₚA V (fun A => ⟨List A, ⟨⟩⟩)
+  = fun A => (List A × (A -> List A -> List A) × Unit)
   := rfl
 
 -- ## Displayed Algebras
@@ -225,8 +282,8 @@ example {Vec : Type} {A : Type}
 /-- Compute motive type.
 
 Example: `TyₛD (SPi Nat (fun _ => U)) Vec` reduces to `(n : Nat) -> Vec n -> Type`. -/
-def TyₛD.{u, v} : (Aₛ : Tyₛ.{u}) -> TyₛA.{u, v} Aₛ -> Type ((max u v) + 1)
-| U, T => T -> Type (max u v)
+def TyₛD.{u} (Aₛ : Tyₛ.{u} l) : TyₛA.{u} Aₛ -> Type u :=
+  fun T => T -> Sort u
 -- | SPi T Aₛ, f => (t : T) -> TyₛD (Aₛ t) (f t)
 
 /-- Compute motive type for each mutually defined inductive type.
@@ -239,13 +296,16 @@ reduces to just one motive type:
 ```
 ((t : Nat) → Vec t -> Type) × Unit
 ``` -/
-def ConₛD.{u, v} : (Γₛ : Conₛ.{u}) -> ConₛA.{u, v} Γₛ -> Type ((max u v) + 1)
-| .nil, _ => PUnit
-| .cons A Γ, ⟨a, γ⟩ => TyₛD A a × ConₛD Γ γ
+def ConₛD.{u} (Γₛ : Conₛ.{u} l) (c : ConₛA.{u} Γₛ): l.Telescope (Type u) :=
+match Γₛ with
+| .nil => return PUnit
+| .cons A Γ => do
+  let ⟨a,γ⟩ ← c
+  return (TyₛD A a) × (← ConₛD Γ (pure γ))
 
-example {Vec : Type} : ConₛD Vₛ ⟨Vec, ⟨⟩⟩ = ((Vec -> Type) × PUnit.{2}) := rfl
+example : ConₛD Vₛ (fun A => ⟨List A, ⟨⟩⟩) = fun A : Type => ((List A -> Prop) × PUnit.{1}) := rfl
 
-def VarₛD : (v : Varₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (VarₛA v γₛ)
+def VarₛD {Γₛ : Conₛ.{u} l}: (v : Varₛ Γₛ Aₛ) -> ConₛD Γₛ γₛ -> TyₛD Aₛ (VarₛA v γₛ)
 | .vz  , ⟨a, _⟩ => a
 | .vs v, ⟨a, γD⟩ => VarₛD v γD
 

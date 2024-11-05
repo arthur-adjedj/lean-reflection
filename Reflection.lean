@@ -6,9 +6,9 @@ import Reflection.Simple
 -- import Reflection.Simple.Expressions
 
 
-def eraseIndices (T : Type) : SimpleInductiveType T -> ((Erased : Type) × (Guard : Erased -> Prop) × SimpleInductiveType Erased)
-| ⟨.succ k, ⟨spec, c, hc⟩ ::: cs, recursor⟩ => sorry
-| ⟨0, ⟦⟧, recursor⟩ => sorry
+-- def eraseIndices (T : Type) : SimpleInductiveType T -> ((Erased : Type) × (Guard : Erased -> Prop) × SimpleInductiveType Erased)
+-- | ⟨.succ k, ⟨spec, c, hc⟩ ::: cs, recursor⟩ => sorry
+-- | ⟨0, ⟦⟧, recursor⟩ => sorry
 
 -- def translate (φ : Prop) : LeanPred φ -> ((φ' : Prop) × SimplePred φ')
 -- | .inductive => eraseIndices
