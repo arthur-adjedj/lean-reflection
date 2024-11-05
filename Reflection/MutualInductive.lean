@@ -133,10 +133,10 @@ section Examples
   -- List : Type → U
   def Vₛ : Conₛ [≤ₐ] := U :: []
 
-  -- List : Type → U ⊢ₛ  List A : U
+  -- List : Type≤ₐ → U ⊢ₛ  List A : U
   def V_nil : Tyₚ Vₛ := El .vz -- List A
 
-  -- List : Type → U ⊢ₛ  A → List A → List A
+  -- List : Type≤ₐ → U ⊢ₛ  A → List A → List A
   def V_cons : Tyₚ Vₛ :=
     PFunc (Tmₛ.varParam (.vz ⟨⟩)) <| -- A →
       PFunc (Tmₛ.varInd vz) <| -- List A →
@@ -151,6 +151,13 @@ section Examples
     PFunc (Tmₛ.varParam (.vz ⟨⟩)) <| -- A →
                       --vvvvvv this is not provable, it's just false really
       PFunc (.param (.vz sorry) (Tmₛ.varInd vz)) <| -- (A → List A) →
+        El vz -- List A
+
+  /--Example of a valid constructor in which `A` only appears in a covariant way.
+  `V_valid : A → (Nat → A) → List A`-/
+  def V_valid  : Tyₚ Vₛ  :=
+    PFunc (Tmₛ.varParam (.vz ⟨⟩)) <| -- A →
+      PFunc (.arr Nat (.varParam $ .vz ⟨⟩)) <| -- (Nat → A) →
         El vz -- List A
 
   def V : Conₚ Vₛ := V_nil :: V_cons :: []
