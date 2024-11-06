@@ -7,7 +7,7 @@ import Reflection.Util.EqHelpers
   Agda source for the above lives at https://bitbucket.org/javra/inductive-families
 -/
 
-set_option pp.proofs true
+-- set_option pp.proofs true
 -- set_option pp.universes true
 set_option linter.unusedVariables false
 
@@ -118,16 +118,16 @@ Example (vectors):
 V_nil :: V_cons A :: []
 ``` -/
 inductive Conₚ (Γ : Conₛ l): Type (u+1)
-| nil : Conₚ Γ
-| cons : Tyₚ Γ → Conₚ Γ → Conₚ Γ
-notation "[]" => Conₚ.nil
-infixr:67 " :: " => Conₚ.cons
+| nil  : Conₚ Γ
+| cons : Conₚ Γ → Tyₚ Γ →  Conₚ Γ
+notation "⬝" => Conₚ.nil
+infixl:40 " ▹ " => Conₚ.cons
 
 section Examples
   /-- Corresponds to `Nat : U`. -/
   def Nₛ : Conₛ .nil := U :: []
   /-- Corresponds to the two constructors `Nat.zero : Nat` and `Nat.succ : Nat → Nat`. -/
-  def N  : Conₚ Nₛ := El .vz :: PFunc (.varInd .vz) (El .vz) :: []
+  def N  : Conₚ Nₛ := ⬝ ▹ PFunc (.varInd .vz) (El .vz) ▹ El .vz
 
   -- List : Type → U
   /-Sort Contexts are now indexed by a list of directions,
@@ -161,7 +161,7 @@ section Examples
       PFunc (.arr Nat (.varParam $ .vz ⟨⟩)) <| -- (Nat → A) →
         El vz -- List A
 
-  def V : Conₚ Vₛ := V_nil :: V_cons :: []
+  def V : Conₚ Vₛ := ⬝ ▹ V_cons ▹ V_nil
 end Examples
 
 -- # Semantics
@@ -202,9 +202,14 @@ def ConₛA' : Conₛ l → Type (u+1)
   | .cons A Γ => Prod (TyₛA A) (ConₛA' Γ)
 termination_by structural Γₛ => Γₛ
 
-def ConₛA (Γₛ : Conₛ l): Type (u+1) := l.Telescope (ConₛA' Γₛ)
+abbrev ConₛA (Γₛ : Conₛ l): Type (u+1) := l.Telescope (ConₛA' Γₛ)
 
 example : ConₛA Vₛ = (Type → (Type × PUnit.{2})) := by rfl
+
+def VarₛA' {Γₛ : Conₛ l} (v : Varₛ Γₛ Aₛ) (c : ConₛA' Γₛ): TyₛA Aₛ :=
+  match v, c with
+    |  vz  , ⟨a, _ ⟩ =>  a
+    |  vs v, ⟨_, γₛ⟩ => VarₛA' v γₛ
 
 /--
   Variable lookup. Given a context `Γₛ` and an interpretation `γₛ` for that context,
@@ -226,6 +231,11 @@ def VarₛA {Γₛ : Conₛ l} (v : Varₛ Γₛ Aₛ) (c : ConₛA Γₛ): l.Te
 def VarₚA : {l : List Dir} → Varₚ d l → l.Telescope (Type u)
 |  [d], .vz _  => fun A => A
 | _   :: l, .vs v => fun _ => VarₚA v
+
+def VarₚA' : {l : List Dir} → Varₚ d l → Type (u+1)
+|  [d], .vz _  => (A : Type u) → A
+| _   :: l, .vs v => Type u → VarₚA' v
+
 
 /- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
@@ -278,6 +288,18 @@ noncomputable def TmₛA {Γₛ : Conₛ l} {Aₛ : Tyₛ l} (t : Tmₛ Γₛ A�
 --    return d → cd
 --termination_by structural t
 
+noncomputable def TmₛA' {Γₛ : Conₛ l} {Aₛ : Tyₛ l} (t : Tmₛ Γₛ Aₛ d) (γₛ : ConₛA'.{u+1} Γₛ): TyₛA Aₛ := by
+  induction t
+  case varInd   v => exact VarₛA' v γₛ
+  case varParam v => exact VarₚA' v
+  case param v d ih => exact
+      let d := ih γₛ
+      let v := VarₚA' v
+      v → d
+  case arr d cd ih => exact
+    let cd := ih γₛ
+    d → cd
+
 example {List : Type → Type} : @TmₛA.{0} [.eq] .eq (.cons U .nil) U (.varInd .vz) (fun A => ⟨List A, ⟨⟩⟩) = List := rfl
 
 /-- Interprets a constructor type. See below for examples.  Example:
@@ -325,7 +347,7 @@ reduces to the Lean type
 ``` -/
 noncomputable def ConₚA.{u} {Γₛ : Conₛ.{u} l} : Conₚ.{u} Γₛ → ConₛA.{u} Γₛ → l.Telescope (Type u)
 | .nil, _ => pure PUnit.{u+1}
-| .cons A Γ, γₛ => do
+| .cons Γ A, γₛ => do
   let t₁ ← TyₚA.{u} A γₛ
   let t₂ ← ConₚA Γ γₛ
   return t₁ × t₂
@@ -340,9 +362,12 @@ example {List : Type → Type} {A : type}
 /-- Compute motive type.
 
 Example: `TyₛD (SPi Nat (fun _ => U)) Vec` reduces to `(n : Nat) → Vec n → Type`. -/
-def TyₛD.{u} (Aₛ : Tyₛ.{u} l) : TyₛA.{u} Aₛ → Type u :=
-  fun T => T → Sort u
--- | SPi T Aₛ, f => (t : T) → TyₛD (Aₛ t) (f t)
+def TyₛD'.{u} (Aₛ : Tyₛ.{u} l) : TyₛA.{u} Aₛ → Type (u+1) :=
+  fun T => T → Type u
+
+def TyₛD.{u} (Aₛ : Tyₛ l) (T: l.Telescope (TyₛA Aₛ)) :  l.Telescope (Type (u+1)) := do
+  let T ← T
+  return T → Type u
 
 /-- Compute motive type for each mutually defined inductive type.
 
@@ -354,20 +379,39 @@ reduces to just one motive type:
 ```
 ((t : Nat) → Vec t → Type) × Unit
 ``` -/
-def ConₛD.{u} (Γₛ : Conₛ.{u} l) (c : ConₛA.{u} Γₛ): l.Telescope (Type u) :=
+def ConₛD'.{u} (Γₛ : Conₛ.{u} l) (c : ConₛA'.{u} Γₛ): Type (u+1) :=
+match Γₛ with
+| .nil => PUnit
+| .cons A Γ =>
+  let ⟨a,γ⟩ := c
+  (TyₛD' A a) × (ConₛD' Γ γ)
+termination_by structural Γₛ
+
+def ConₛD.{u} (Γₛ : Conₛ.{u+1} l) (c : ConₛA.{u+1} Γₛ): l.Telescope (Type (u+1)) :=
 match Γₛ with
 | .nil => return PUnit
 | .cons A Γ => do
   let ⟨a,γ⟩ ← c
-  return (TyₛD A a) × (← ConₛD Γ (pure γ))
+  let ty ← TyₛD A (pure a)
+  let con ← ConₛD Γ (pure γ)
+  return ty × con
+termination_by structural Γₛ
 
-example : ConₛD Vₛ (fun A => ⟨List A, ⟨⟩⟩) = fun A : Type => ((List A → Prop) × PUnit.{1}) := rfl
+example : (ConₛD Vₛ (fun A : Type 1 => ⟨List A, ⟨⟩⟩)) = (fun A => (List A → Type) × PUnit.{2}) := rfl
 
-def VarₛD {Γₛ : Conₛ.{u} l} (γₛ : ConₛA Γₛ) (params : List (Type u))
-  (h : l.length = params.length) (v : Varₛ Γₛ Aₛ) (c : List.Telescope.run l params h (ConₛD Γₛ γₛ))
-: TyₛD Aₛ (List.Telescope.run l params h (VarₛA v γₛ)) := match v,c with
-| .vz  , ⟨a, _⟩ => a
+def VarₛD {Γₛ : Conₛ.{u} l} {γₛ : ConₛA' Γₛ}  (v : Varₛ Γₛ Aₛ) (c : ConₛD' Γₛ γₛ)
+: TyₛD' Aₛ (VarₛA' v γₛ) := match v,c with
+| .vz  , ⟨a, _⟩  => a
 | .vs v, ⟨a, γD⟩ => VarₛD v γD
+
+def VarₚD {Γₛ : Conₛ.{u} l} {γₛ : ConₛA' Γₛ}  (v : Varₚ d l)
+: TyₛD' Aₛ (VarₚA' v) := match v with
+| .vz _  => by
+  rw [VarₚA',TyₛD']
+  sorry
+| .vs v => by
+  rw [VarₚA',TyₛD']
+  exact VarₚD v
 
 /--
 The [original Agda code](https://bitbucket.org/javra/inductive-families/src/717f404c220e17d0ac5917306fd74dd0c4883cde/agda/IFD.agda#lines-17:20)
@@ -380,9 +424,23 @@ for this is, again with `VarₛD` inlined:
 ``` -/
 -- ! TmₛD needs casts because reduction behaviour of TmₛA is broken.
 -- And for some reason TmₚD works just fine? What...
-def TmₛD : {Γₛ : Conₛ} → {Aₛ : Tyₛ} → {γₛ : ConₛA Γₛ} → (t : Tmₛ  Γₛ Aₛ) → ConₛD Γₛ γₛ → TyₛD Aₛ (TmₛA t γₛ)
-|  _, _, _γₛ, .var v                    , γₛD => TmₛA_var.symm ▸ VarₛD v γₛD
--- | Γₛ, _, γₛ, .app (T := T) (A := A) t u, γₛD => TmₛA_app.symm ▸ TmₛD t γₛD u
+def TmₛD {Γₛ : Conₛ l} {Aₛ : Tyₛ l} {γₛ : ConₛA' Γₛ} (t : Tmₛ Γₛ Aₛ d)
+(γₛD : ConₛD' Γₛ γₛ) : TyₛD' Aₛ (TmₛA' t γₛ) := by
+  induction t
+  case varInd v => exact VarₛD v γₛD
+  case varParam v => exact VarₚD v γₛD
+  case arr T tm ih =>
+    intro f
+    exact (t : T) → (ih γₛD (f t))
+  case param v d ih =>
+    intro f
+    exact (v : VarₚA' v) → ih γₛD (f v)
+
+--  match t with
+-- | .varInd v => VarₛD v γₛD
+-- | .varParam v => VarₚD v γₛD
+-- | .arr T tm => fun f => (t : T) → TmₛD tm γₛD (f t)
+-- | .param v tm => fun f => (v : VarₚA' v) → TmₛD tm γₛD (f v)
 
 theorem TmₛD_var : TmₛD (Tmₛ.var v) γₛD = TmₛA_var.symm ▸ VarₛD v γₛD := by rw [TmₛD]
 -- theorem TmₛD_app : TmₛD (t @ u)     γₛD = TmₛA_app.symm ▸ TmₛD t γₛD u := by rw [TmₛD]
@@ -403,12 +461,12 @@ def TyₚD.{u, v} : (A : Tyₚ.{u} Γₛ) → ConₛD.{u} Γₛ γₛ → TyₚA
 | PArr   T    Rest, γD, f   => (t : T) → TyₚD Rest γD (f t)
 | PFunc Self Rest, γD, f    => ⦃self : TmₛA Self γₛ⦄ → TmₛD Self γD self → TyₚD Rest γD (f self)
 
-inductive Vec (A : Type) : Nat → Type
-| nil : Vec A 0
-| cons : (n : Nat) → A → Vec A n → Vec A (n + 1)
+-- inductive Vec (A : Type) : Nat → Type
+-- | nil : Vec A 0
+-- | cons : (n : Nat) → A → Vec A n → Vec A (n + 1)
 
 example {A : Type} {P : List A → Type}
-  : @TyₚD Vₛ ⟨List A, ⟨⟩⟩ V_nil ⟨P, ⟨⟩⟩ List.nil
+  : @TyₚD _ Vₛ ⟨List A, ⟨⟩⟩ V_nil ⟨P, ⟨⟩⟩ List.nil
   = P List.nil
   := rfl
 example {A : Type} {P : List A → Type}
