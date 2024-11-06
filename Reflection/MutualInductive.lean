@@ -25,11 +25,10 @@ notation "≤ₐ" => Dir.leq
 notation "≥ₐ" => Dir.geq
 notation "=ₐ" => Dir.eq
 
-def Dir.max : Dir → Dir → Dir
-  | none, d | d, none => d
-  | leq, geq | geq, leq | eq, _ | _, eq => eq
-  | leq, leq => leq
-  | geq, geq => geq
+def Dir.not : Dir → Dir
+  | leq => geq
+  | geq => leq
+  | _   => eq
 
 def Dir.LE : Dir → Dir → Prop
   | .none , _
@@ -84,7 +83,7 @@ A ∈ l
 ``` -/
 | varParam : Varₚ d l → Tmₛ Γ (@U l) d
 | arr : (T : Type u) → Tmₛ Γ A d → Tmₛ Γ A d
-| param : Varₚ (d.max ≥ₐ) l → Tmₛ Γ A (d.max ≤ₐ) → Tmₛ Γ (@U l) d
+| param : Varₚ d.not l → Tmₛ Γ A d → Tmₛ Γ (@U l) d
 
 /-- Constructor types `... → Self ...`.
 
@@ -105,7 +104,7 @@ inductive Tyₚ : Conₛ l →  Type (u+1)
 | El : Varₛ.{u} Γₛ U → Tyₚ Γₛ
 -- No need to work with dependent types just yet.
 | PArr : (T : Type u) → Tyₚ Γₛ → Tyₚ Γₛ
-| PFunc : Tmₛ Γₛ U ∅ → Tyₚ Γₛ → Tyₚ Γₛ
+| PFunc : Tmₛ Γₛ U ≤ₐ → Tyₚ Γₛ → Tyₚ Γₛ
 open Tyₚ
 
 /-- List of constructor descriptions.
@@ -131,6 +130,8 @@ section Examples
   def N  : Conₚ Nₛ := El .vz :: PFunc (.varInd .vz) (El .vz) :: []
 
   -- List : Type → U
+  /-Sort Contexts are now indexed by a list of directions,
+  showing whether each type parameter's variance. In this example, List is parametric over a covariant argument. -/
   def Vₛ : Conₛ [≤ₐ] := U :: []
 
   -- List : Type≤ₐ → U ⊢ₛ  List A : U
@@ -193,6 +194,8 @@ instance : Monad (List.Telescope l) where
 def TyₛA : Tyₛ.{u} l → Type (u+1) := fun _ => (Type u)
 -- | SPi T A => (t : T) → TyₛA (A t)
 
+instance : Inhabited (TyₛA t) := ⟨PUnit⟩
+
 /-- Interprets a context of type formers.  The `Vec` example becomes `(Nat → Type) × Unit`. -/
 def ConₛA' : Conₛ l → Type (u+1)
   | .nil => PUnit
@@ -220,11 +223,11 @@ def VarₛA {Γₛ : Conₛ l} (v : Varₛ Γₛ Aₛ) (c : ConₛA Γₛ): l.Te
     |  vs v, ⟨_, γₛ⟩ => VarₛA v (pure γₛ)
 
 
-def VarₚA : {l : List Dir} → Varₚ l → l.Telescope (Type u)
-|  [d], .vz  => fun A => A
+def VarₚA : {l : List Dir} → Varₚ d l → l.Telescope (Type u)
+|  [d], .vz _  => fun A => A
 | _   :: l, .vs v => fun _ => VarₚA v
 
-/-- A `Vec` example in pseudocode, where quotation marks refer to object language:
+/- A `Vec` example in pseudocode, where quotation marks refer to object language:
 ```
 @TmₛA ["Nat → Type"] "Type" "Vec 123" ⟨Vec, ()⟩
 ```
@@ -249,16 +252,33 @@ _ᵃt : ∀{ℓ Γc B} → TmS Γc B → _ᵃc {ℓ} Γc → _ᵃS {ℓ} B
 (var (vvs t) ᵃt) (γ , α) = (var t ᵃt) γ
 ((t $S α) ᵃt)    γ       = (t ᵃt) γ α
 ```
+Structural recursion fails on this function... TODO file an issue
 -/
-def TmₛA.{u} {Γₛ : Conₛ.{u} l} {Aₛ : Tyₛ l} (t : Tmₛ Γₛ Aₛ) ( γₛ : ConₛA Γₛ): l.Telescope (TyₛA Aₛ) :=
-match t with
-  | Tmₛ.varInd   v => VarₛA v γₛ
-  | Tmₛ.varParam v => VarₚA v
+@[simp]
+noncomputable def TmₛA {Γₛ : Conₛ l} {Aₛ : Tyₛ l} (t : Tmₛ Γₛ Aₛ d) (γₛ : ConₛA Γₛ): l.Telescope (TyₛA Aₛ) := by
+  induction t
+  case varInd   v => exact VarₛA v γₛ
+  case varParam v => exact VarₚA v
+  case param v d ih => exact do
+      let d ← ih γₛ
+      let v ← VarₚA v
+      return v → d
+  case arr d cd ih => exact do
+    let cd ← ih γₛ
+    return d → cd
+--match t with
+--  | .varInd   v => VarₛA v γₛ
+--  | .varParam v => VarₚA v
+--  | .param v d => do
+--    let d ← TmₛA d γₛ
+--    let v ← VarₚA v
+--    return v → d
+--  | .arr d cd => do
+--    let cd ← TmₛA cd γₛ
+--    return d → cd
+--termination_by structural t
 
-@[simp] theorem TmₛA_var  : TmₛA (Tmₛ.varInd v) γₛ = VarₛA v γₛ := by rw [TmₛA]
--- @[simp] theorem TmₛA_app  : TmₛA (Tmₛ.app t u) γₛ = (TmₛA t γₛ) u := by rw [TmₛA]
-
-example {List : Type → Type} : @TmₛA [.eq] (U :: []) U (.varInd .vz) (fun A => ⟨List A, ⟨⟩⟩) = List := rfl
+example {List : Type → Type} : @TmₛA.{0} [.eq] .eq (.cons U .nil) U (.varInd .vz) (fun A => ⟨List A, ⟨⟩⟩) = List := rfl
 
 /-- Interprets a constructor type. See below for examples.  Example:
 ```
@@ -268,9 +288,9 @@ reduces to the type of `Vec.cons` as you would expect:
 ```
 (n : Nat) → A → Vec n → Vec (n + 1)
 ``` -/
-def TyₚA.{u} {Γₛ : Conₛ.{u} l} (t : Tyₚ.{u} Γₛ) (γₛ : ConₛA.{u} Γₛ): l.Telescope (Type u) :=
+noncomputable def TyₚA.{u} {Γₛ : Conₛ.{u} l} (t : Tyₚ.{u} Γₛ) (γₛ : ConₛA.{u} Γₛ): l.Telescope (Type u) :=
 match t with
-| El Self => TmₛA.{u} Self γₛ
+| El Self => VarₛA Self γₛ
 | PArr T Rest => do
   let h ← TyₚA Rest γₛ
   return T → h
@@ -303,12 +323,12 @@ reduces to the Lean type
 × ((n : Nat) → A → Vec n → Vec (n + 1)) -- `Vec.cons`
 × Unit
 ``` -/
-def ConₚA.{u} {Γₛ : Conₛ.{u} l} : Conₚ.{u} Γₛ → ConₛA.{u} Γₛ → l.Telescope (Type u)
+noncomputable def ConₚA.{u} {Γₛ : Conₛ.{u} l} : Conₚ.{u} Γₛ → ConₛA.{u} Γₛ → l.Telescope (Type u)
 | .nil, _ => pure PUnit.{u+1}
 | .cons A Γ, γₛ => do
   let t₁ ← TyₚA.{u} A γₛ
   let t₂ ← ConₚA Γ γₛ
-  return t₁ ×  t₂
+  return t₁ × t₂
 
 example {List : Type → Type} {A : type}
   : ConₚA V (fun A => ⟨List A, ⟨⟩⟩)
@@ -343,9 +363,9 @@ match Γₛ with
 
 example : ConₛD Vₛ (fun A => ⟨List A, ⟨⟩⟩) = fun A : Type => ((List A → Prop) × PUnit.{1}) := rfl
 
-def VarₛD {Γₛ : Conₛ.{u} l} (params : List (Type u))
-  (h : l.length = params.length) (v : Varₛ Γₛ Aₛ) (γₛ : List.Telescope.run l params h (ConₛD Γₛ γₛ ))
-: TyₛD Aₛ (VarₛA v (pure γₛ))
+def VarₛD {Γₛ : Conₛ.{u} l} (γₛ : ConₛA Γₛ) (params : List (Type u))
+  (h : l.length = params.length) (v : Varₛ Γₛ Aₛ) (c : List.Telescope.run l params h (ConₛD Γₛ γₛ))
+: TyₛD Aₛ (List.Telescope.run l params h (VarₛA v γₛ)) := match v,c with
 | .vz  , ⟨a, _⟩ => a
 | .vs v, ⟨a, γD⟩ => VarₛD v γD
 
